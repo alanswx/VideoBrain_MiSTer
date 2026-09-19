@@ -58,6 +58,7 @@ ENTITY uv202_top IS
     field   : OUT std_logic;
     hpos    : OUT unsigned(7 DOWNTO 0);
     vpos    : OUT unsigned(8 DOWNTO 0);
+    line_start     : OUT std_logic;
     hblank_falling : OUT std_logic;
     hblank_rising  : OUT std_logic;
 
@@ -100,6 +101,7 @@ BEGIN
       field          => field,
       hpos           => hpos,
       vpos           => vpos,
+      line_start     => line_start,
       hblank_falling => hblank_falling,
       hblank_rising  => hblank_rising
       );

@@ -30,6 +30,11 @@ ENTITY uv202_timing IS
     -- internal timing taps for uv202_arbiter / uv201_fetcher
     hpos       : OUT unsigned(7 DOWNTO 0);  -- 0-227, cycle within line
     vpos       : OUT unsigned(8 DOWNTO 0);  -- 0-262, line within field
+    -- 1-cycle pulse at hpos 0, i.e. the start of the HBLANK tail. vpos has
+    -- already advanced, so this is the point to begin fetching the next line:
+    -- it leaves the whole 33-cycle tail to fill the FIFO before active video.
+    line_start     : OUT std_logic;
+
     hblank_falling : OUT std_logic;   -- 1-cycle pulse, = "cycle 0" per doc convention
     hblank_rising  : OUT std_logic    -- 1-cycle pulse, FIFO-clear trigger for uv201
     );
@@ -47,6 +52,7 @@ ARCHITECTURE rtl OF uv202_timing IS
   SIGNAL csync_l    : std_logic := '0';
   SIGNAL scanline_l : std_logic := '0';
 
+  SIGNAL line_start_l  : std_logic := '0';
   SIGNAL hblank_fall_l : std_logic := '0';
   SIGNAL hblank_rise_l : std_logic := '0';
 
@@ -113,12 +119,14 @@ BEGIN
     ELSIF rising_edge(clk) THEN
       hblank_fall_l <= '0';
       hblank_rise_l <= '0';
+      line_start_l  <= '0';
 
       IF brclk_ena = '1' THEN
 
         -- horizontal position advance / line rollover
         IF hpos_l = BRCLKS_PER_LINE-1 THEN
           hpos_l <= (OTHERS => '0');
+          line_start_l <= '1';
           scanline_l <= NOT scanline_l;
 
           IF vpos_l = lines_this_field-1 THEN
@@ -201,6 +209,7 @@ BEGIN
 
   hpos <= hpos_l;
   vpos <= vpos_l;
+  line_start     <= line_start_l;
   hblank_falling <= hblank_fall_l;
   hblank_rising  <= hblank_rise_l;
 
