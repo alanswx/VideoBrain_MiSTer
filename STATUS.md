@@ -67,28 +67,26 @@ one 16x16 object:
   This is the fetch-cadence item below, now quantified.
 - The BIOS parks every object (Y = 0x1FF, DX = DY = 0) and then waits.
 
-All 16 cartridges were run for 50 frames. Every one of them stops at the same
-place: PC0=427D, PC1=41D2, DC0=15E5, cmd=FF, bg=1F, white screen, no objects.
+The machine boots. The BIOS reaches its title screen (VIDEO BRAIN TM /
+CHOOSE KEY / ENTER CARTRIDGE) and cartridges reach their own menus:
+Gladiator, Tennis, Pinball and Blackjack all display correctly. Pressing
+RUN/STOP on Tennis starts the game, which renders a recognisable court,
+net, scoreboard and player sprites.
 
-The cartridge read path itself is correct byte for byte. At that point the
-accumulator holds the cartridge byte at 0x15E4, checked against the images for
-three carts (0x2A, 0x18, 0x08). So download, cart_rom, the sys_bus decode and
-ROMC 02 all work; the BIOS is reading the cartridge and choosing not to draw.
+Three defects had to be fixed to get there, each found in simulation:
 
-Interrupts are the reason it cannot proceed, and the gap is wider than wiring:
+- ROMC 1D (XDC) was the only ROMC state the microcode issues that f8_busif
+  did not implement, and there was no DC1 to swap with. The BIOS spun in the
+  copy loop at 027B-0281 forever.
+- The interrupt path did not exist at any level. See the commits for
+  f8_cpu, f8_busif and the new f3853.vhd.
+- The fetcher started on hblank_falling, which is already the first active
+  pixel, so every object drew nine pixels right of its programmed X.
 
-- `f8_cpu` has no interrupt request input. Its port list is dr/dw/dv, romc,
-  tick, phase, the two I/O ports, clk/ce/reset_na and the debug outputs.
-- The interrupt microcode exists. `OP_INTERRUPT` is x"2E" (`f8_pack.vhd:90`)
-  and its three-state sequence (ROMC 1C, 0F, 13) is in the table.
-- Nothing dispatches to it. `f8_cpu.vhd` references only `OP_RESET`, at
-  lines 236-241. That block is the pattern an interrupt entry would copy.
-- `f8_busif` leaves ROMC 0F and 13 as NULL, so there is no vector source.
-- `uv201_yint` and `videobrain_io` are not instantiated.
-
-Upstream Channel F does not use interrupts, which is why the vendored CPU has
-none. Adding them means diverging from the blobs whose hashes are recorded
-above; that divergence should be deliberate and noted when it happens.
+Known remaining video defect: in Tennis some sprites render partially
+corrupted while others are clean. The likely causes are the FIFO's
+documented 10-to-8 spill hysteresis and the xcopy path, neither of which has
+been checked against hardware or MAME. This is the first thing to chase.
 
 ## Deliberately incomplete
 
@@ -102,13 +100,16 @@ above; that divergence should be deliberate and noted when it happens.
 
 ## Next validation order
 
-1. Start the fetcher during HBLANK rather than on `hblank_falling`, so the FIFO
-   leads the beam. `selftest.rom` measures the error directly.
+1. Chase the corrupted sprites in Tennis: FIFO spill hysteresis, xcopy, and
+   the X/Y zoom paths, none of which the fetcher implements fully.
 2. Add focused simulation for `f8_busif`: ROMC 00/01/02/03/05/0C/0E/11 with
    delayed grants. Reads latch `ext_rdata` at phase 2 regardless of
    `ext_grant`, which is only safe for the zero-wait RES1 path.
-3. Instantiate `uv201_yint` and an interrupt path to the CPU, or the BIOS
-   cannot get past its wait loop.
+3. Convert the VHDL to Verilog a file at a time, checking each against the
+   frame hashes of selftest.rom, selftest_int.rom and the booting titles.
+4. The F3853 timer runs off BRCLK; real hardware clocks the SMI at 2MHz.
+   Only the external interrupt is exercised so far.
+5. MiSTer wrapper, audio output and joystick analogue axes.
 4. Define UV201 RP/DY writeback semantics and exact fetch cadence before adding the renderer.
 5. Add ROM/cartridge storage and VideoBrain I/O/F3853 paths.
 6. Integrate the MiSTer wrapper only after the machine-level interfaces are stable.
