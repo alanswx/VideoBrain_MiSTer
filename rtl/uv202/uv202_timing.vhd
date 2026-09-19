@@ -56,6 +56,11 @@ ARCHITECTURE rtl OF uv202_timing IS
   -- VBLANK is high for the first 21 lines of each field.
   CONSTANT VBLANK_LINES : natural := 21;
 
+  -- Whole-line approximation for CSYNC classification. The half-line seam
+  -- remains a hardware-validation item; HBLANK and field lengths are separate.
+  CONSTANT NORMAL_LINES_ODD  : natural := 244;
+  CONSTANT NORMAL_LINES_EVEN : natural := 243;
+
   -- classification of the current line's CSYNC pulse shape
   TYPE line_kind_t IS (LK_VSYNC, LK_EQ, LK_NORMAL);
   SIGNAL line_kind : line_kind_t;
@@ -64,11 +69,6 @@ BEGIN
 
   lines_this_field <= to_unsigned(LINES_ODD_FIELD, 9) WHEN field_l = '0' ELSE
                        to_unsigned(LINES_EVEN_FIELD, 9);
-
-  -- Whole-line approximation for CSYNC classification. The half-line seam
-  -- remains a hardware-validation item; HBLANK and field lengths are separate.
-  CONSTANT NORMAL_LINES_ODD  : natural := 244;
-  CONSTANT NORMAL_LINES_EVEN : natural := 243;
 
   PROCESS(vpos_l, field_l, lines_this_field)
     VARIABLE post_eq_start : unsigned(8 DOWNTO 0);

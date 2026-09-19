@@ -26,6 +26,10 @@ ENTITY videobrain_core IS
     f8_po_a_n : OUT uv8;
     f8_po_b_n : OUT uv8;
 
+    -- BRCLK phase enable.  An external renderer must present fifo_pop in this
+    -- phase: the FIFO only acts on pops while it is high.
+    brclk_ena  : OUT std_logic;
+
     fifo_pop   : IN  std_logic;
     fifo_valid : OUT std_logic;
     fifo_entry : OUT uv201_fifo_entry_t;
@@ -39,6 +43,18 @@ ENTITY videobrain_core IS
     field    : OUT std_logic;
     hpos     : OUT unsigned(7 DOWNTO 0);
     vpos     : OUT unsigned(8 DOWNTO 0);
+
+    -- renderer controls, consumed by whatever drives fifo_pop
+    final_mod  : OUT uv8;
+    background : OUT uv8;
+    x_zoom     : OUT std_logic;
+    y_zoom     : OUT std_logic;
+    video_en   : OUT std_logic;
+
+    dl_addr  : IN unsigned(15 DOWNTO 0);
+    dl_data  : IN uv8;
+    dl_wr    : IN std_logic;
+    dl_index : IN uv8;
 
     pc0 : OUT uv16;
     pc1 : OUT uv16;
@@ -64,7 +80,7 @@ ARCHITECTURE rtl OF videobrain_core IS
   SIGNAL ext_class : bus_access_t;
   SIGNAL ext_grant : std_logic;
 
-  SIGNAL brclk_ena : std_logic;
+  SIGNAL brclk_ena_l : std_logic;
   SIGNAL dmareq0 : std_logic;
   SIGNAL hblank_falling : std_logic;
   SIGNAL hblank_rising  : std_logic;
@@ -147,7 +163,7 @@ BEGIN
       dmareq0        => dmareq0,
       dmareq1        => OPEN,
       mclk_ena       => OPEN,
-      brclk_ena      => brclk_ena,
+      brclk_ena      => brclk_ena_l,
       brclk_phase    => OPEN,
       cpu_ena_raw    => OPEN,
       cpu_ce         => cpu_ce,
@@ -179,26 +195,30 @@ BEGIN
       uv_cur_vpos    => vpos_l,
       uv_capture_stb => '0',
       uv_capture_x   => (OTHERS => '0'),
-      uv_o_x_zm      => OPEN,
+      uv_o_x_zm      => x_zoom,
       uv_o_frz       => OPEN,
       uv_o_enb       => uv_o_enb,
       uv_o_int       => OPEN,
       uv_o_kbd       => OPEN,
-      uv_o_y_zm      => OPEN,
+      uv_o_y_zm      => y_zoom,
       uv_o_a_b       => uv_o_a_b,
       uv_o_yint_ho   => OPEN,
       uv_y_int       => OPEN,
-      uv_final_mod   => OPEN,
-      uv_background  => OPEN,
+      uv_final_mod   => final_mod,
+      uv_background  => background,
       uv_obj_addr    => uv_obj_addr,
-      uv_obj_rdata   => uv_obj_rdata
+      uv_obj_rdata   => uv_obj_rdata,
+      dl_addr        => dl_addr,
+      dl_data        => dl_data,
+      dl_wr          => dl_wr,
+      dl_index       => dl_index
       );
 
   u_fetcher : ENTITY work.uv201_fetcher
     PORT MAP (
       clk           => clk,
       reset_na      => reset_na,
-      brclk_ena     => brclk_ena,
+      brclk_ena     => brclk_ena_l,
       line_start    => hblank_falling,
       fifo_clear    => hblank_rising,
       vpos          => vpos_l,
@@ -220,7 +240,7 @@ BEGIN
     PORT MAP (
       clk           => clk,
       reset_na      => reset_na,
-      brclk_ena     => brclk_ena,
+      brclk_ena     => brclk_ena_l,
       hblank_rising => hblank_rising,
       wr_en         => fifo_wr_en,
       wr_entry      => fifo_wr_entry,
@@ -232,7 +252,9 @@ BEGIN
       level         => fifo_level
       );
 
-  field <= field_l;
-  vpos  <= vpos_l;
+  field    <= field_l;
+  vpos     <= vpos_l;
+  video_en <= uv_o_enb;
+  brclk_ena <= brclk_ena_l;
 
 END ARCHITECTURE rtl;

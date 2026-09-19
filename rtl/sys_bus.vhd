@@ -51,7 +51,14 @@ ENTITY sys_bus IS
     uv_background: OUT uv8;
 
     uv_obj_addr  : IN  uv8;
-    uv_obj_rdata : OUT uv8
+    uv_obj_rdata : OUT uv8;
+
+    -- HPS download port.  dl_index selects the target image:
+    -- 0 = RES1, 1 = RES2, 2 = cartridge.  Writes are ignored otherwise.
+    dl_addr  : IN unsigned(15 DOWNTO 0);
+    dl_data  : IN uv8;
+    dl_wr    : IN std_logic;
+    dl_index : IN uv8
     );
 END ENTITY sys_bus;
 
@@ -63,8 +70,13 @@ ARCHITECTURE rtl OF sys_bus IS
   -- driven from address, matching the "RES1 doesn't route through the
   -- arbiter" decision in f8_busif.classify().
   TYPE rom_t IS ARRAY (0 TO 2047) OF uv8;
-  SIGNAL res1_rom : rom_t := (OTHERS => (OTHERS => '0'));  -- TODO: load image
-  SIGNAL res2_rom : rom_t := (OTHERS => (OTHERS => '0'));  -- TODO: load image
+  SIGNAL res1_rom : rom_t := (OTHERS => (OTHERS => '0'));
+  SIGNAL res2_rom : rom_t := (OTHERS => (OTHERS => '0'));
+
+  -- cartridge ROM: 1000-1FFF (4K).  The 0900-0BFF cart-mapped window stays
+  -- open bus; it addresses cart-supplied hardware, not this array.
+  TYPE cart_t IS ARRAY (0 TO 4095) OF uv8;
+  SIGNAL cart_rom : cart_t := (OTHERS => (OTHERS => '0'));
 
   -- system RAM: 0C00-0FFF (1K)
   TYPE ram_t IS ARRAY (0 TO 1023) OF uv8;
@@ -87,6 +99,8 @@ ARCHITECTURE rtl OF sys_bus IS
   SIGNAL bb_cart_addr  : unsigned(11 DOWNTO 0);
   SIGNAL bb_cart_rdata : uv8;
   SIGNAL bb_open_bus   : std_logic;
+
+  SIGNAL dl_res1, dl_res2, dl_cart : std_logic;
 
 BEGIN
 
@@ -152,7 +166,7 @@ BEGIN
   -- read mux (combinational)
   ----------------------------------------------------------------------------
 
-  PROCESS (a_eff, res1_rom, res2_rom, sys_ram, uv_reg_rdata) IS
+  PROCESS (a_eff, res1_rom, res2_rom, cart_rom, sys_ram, uv_reg_rdata) IS
   BEGIN
     IF a_eff <= to_unsigned(ADDR_RES1_HI, 14) THEN
       rdata_l <= res1_rom(to_integer(a_eff));
@@ -167,7 +181,7 @@ BEGIN
       rdata_l <= sys_ram(to_integer(a_eff - to_unsigned(ADDR_RAM_LO, 14)));
 
     ELSIF a_eff <= to_unsigned(ADDR_CART2_HI, 14) THEN
-      rdata_l <= (OTHERS => '1');  -- cartridge ROM stub, open bus
+      rdata_l <= cart_rom(to_integer(a_eff - to_unsigned(ADDR_CART2_LO, 14)));
 
     ELSIF a_eff <= to_unsigned(ADDR_RES2_HI, 14) THEN
       rdata_l <= res2_rom(to_integer(a_eff - to_unsigned(ADDR_RES2_LO, 14)));
@@ -178,6 +192,44 @@ BEGIN
   END PROCESS;
 
   ext_rdata <= rdata_l;
+
+  ----------------------------------------------------------------------------
+  -- Image download.  Held outside the RAM write process so a download cannot
+  -- race a CPU store to the same array.
+  ----------------------------------------------------------------------------
+
+  -- One process per array: a single process selecting between them defeats
+  -- GHDL's RAM inference and the netlist balloons into unrolled muxes.
+  dl_res1 <= dl_wr WHEN dl_index = to_unsigned(0, 8) ELSE '0';
+  dl_res2 <= dl_wr WHEN dl_index = to_unsigned(1, 8) ELSE '0';
+  dl_cart <= dl_wr WHEN dl_index = to_unsigned(2, 8) ELSE '0';
+
+  PROCESS (clk) IS
+  BEGIN
+    IF rising_edge(clk) THEN
+      IF dl_res1 = '1' THEN
+        res1_rom(to_integer(dl_addr(10 DOWNTO 0))) <= dl_data;
+      END IF;
+    END IF;
+  END PROCESS;
+
+  PROCESS (clk) IS
+  BEGIN
+    IF rising_edge(clk) THEN
+      IF dl_res2 = '1' THEN
+        res2_rom(to_integer(dl_addr(10 DOWNTO 0))) <= dl_data;
+      END IF;
+    END IF;
+  END PROCESS;
+
+  PROCESS (clk) IS
+  BEGIN
+    IF rising_edge(clk) THEN
+      IF dl_cart = '1' THEN
+        cart_rom(to_integer(dl_addr(11 DOWNTO 0))) <= dl_data;
+      END IF;
+    END IF;
+  END PROCESS;
 
   ----------------------------------------------------------------------------
   -- UV201 buffered-bus view.  RES2 and system RAM are the SAME arrays used
@@ -203,6 +255,6 @@ BEGIN
 
   bb_res2_rdata <= res2_rom(to_integer(bb_res2_addr));
   bb_ram_rdata  <= sys_ram(to_integer(bb_ram_addr));
-  bb_cart_rdata <= (OTHERS => '1');  -- TODO: real cartridge slot
+  bb_cart_rdata <= cart_rom(to_integer(bb_cart_addr));
 
 END ARCHITECTURE rtl;

@@ -142,7 +142,7 @@ BEGIN
     ELSIF unsigned(reg_addr) = to_unsigned(REG_Y_FREEZE_HI, 8) THEN
       -- bit 7: odd/even field: bit 1: current-Y counter MSB: bit 0:
       -- Y-freeze MSB. Matches MAME's REGISTER_Y_FREEZE_HIGH packing.
-      reg_rdata <= unsigned(cur_field & "00000" & cur_vpos(8) & r_freeze_y(8));
+      reg_rdata <= cur_field & unsigned'("00000") & cur_vpos(8) & r_freeze_y(8);
 
     ELSIF unsigned(reg_addr) = to_unsigned(REG_CURRENT_Y_LO, 8) THEN
       reg_rdata <= cur_vpos(7 DOWNTO 0);

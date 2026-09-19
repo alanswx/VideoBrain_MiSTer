@@ -143,16 +143,20 @@ BEGIN
               CASE romc IS
                 WHEN ROMC_00 =>
                   pc0 <= pc0 + 1;
+                -- These four take the byte the addressed device placed on the
+                -- bus, latched into dr_l at phase 2.  dw is the CPU's own
+                -- output and is only correct for the CPU-sourced ROMC states
+                -- (0A, 12, 14-19).
                 WHEN ROMC_01 =>
-                  pc0 <= pc0 + sext(dw, 16);
+                  pc0 <= pc0 + sext(dr_l, 16);
                 WHEN ROMC_03 =>
                   pc0 <= pc0 + 1;
                 WHEN ROMC_0C =>
-                  pc0(7 DOWNTO 0) <= dw;
+                  pc0(7 DOWNTO 0) <= dr_l;
                 WHEN ROMC_0E =>
-                  dc0(7 DOWNTO 0) <= dw;
+                  dc0(7 DOWNTO 0) <= dr_l;
                 WHEN ROMC_11 =>
-                  dc0(15 DOWNTO 8) <= dw;
+                  dc0(15 DOWNTO 8) <= dr_l;
                 WHEN OTHERS =>
                   NULL;
               END CASE;
