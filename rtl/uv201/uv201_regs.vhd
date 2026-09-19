@@ -1,29 +1,7 @@
 --------------------------------------------------------------------------------
--- VideoBrain UV201 - register file
---------------------------------------------------------------------------------
--- Reference: kevtris "Videobrain Unwrapped" V0.05, "UV201 Specifics" section
---            (register map 0800-088F, 08F0-08FB)
---            MAME src/mame/vidbrain/uv201.cpp read()/write() - cross-checked
---            field-for-field against this implementation; offsets, bit
---            positions and read-only/write-only split all match MAME.
---------------------------------------------------------------------------------
---
--- SCOPE: this is pure register storage plus the small amount of status-
--- register logic that depends on live scanline position (Current-Y,
--- Y-Freeze high bits) and on the ext-int capture event (X-Freeze,
--- Y-Freeze). It does NOT implement:
---   - the object fetcher / 10-deep FIFO / scanline renderer (doc "The
---     basics of UV201 rendering" section) - that is a separate, later
---     module (uv201_fetcher.vhd / uv201_render.vhd, not yet written)
---   - the Y-interrupt timer (doc / MAME set_y_interrupt()+y_update_tick) -
---     the y_int/cmd_yint_ho registers are stored here and exposed as
---     outputs so a future uv201_yint.vhd can consume them without this
---     module's interface changing.
---   - color/palette LUT (rendering-side, not register-file concern)
---
--- This mirrors the project's stated MVP order in STATUS.md: get the
--- register file behaving correctly first (testable against MAME's model
--- and the doc's bit tables), retrofit real fetch/render timing later.
+-- VideoBrain UV201 register file
+-- UV201 object RAM, control registers, status reads, and freeze capture.
+-- Reference: docs/uv201.cpp and docs/videobrain_unwrapped.txt.
 --------------------------------------------------------------------------------
 
 LIBRARY ieee;
@@ -39,76 +17,37 @@ ENTITY uv201_regs IS
     clk      : IN  std_logic;
     reset_na : IN  std_logic;
 
-    ------------------------------------------------------------------------
-    -- CPU register access, via sys_bus. `reg_addr` is the offset within
-    -- the UV201's 256-byte window (i.e. CPU address minus ADDR_UV201_LO),
-    -- matching MAME's `offset` parameter and uv202_pack's REG_* constants.
-    -- Single combinational read / registered write, same convention as
-    -- uv202_timing/uv202_arbiter (ce-style, no separate ack - sys_bus and
-    -- uv202_arbiter own the wait-state sequencing, this module is always
-    -- ready).
-    ------------------------------------------------------------------------
+    -- CPU register access. reg_addr is the 0x00-0xFF UV201 offset.
     reg_addr  : IN  uv8;
     reg_we    : IN  std_logic;
     reg_wdata : IN  uv8;
     reg_rdata : OUT uv8;
 
-    ------------------------------------------------------------------------
-    -- Live position taps from uv202_timing, needed for the read-only
-    -- status registers (Current-Y, Y-Freeze high bits' "current Y counter
-    -- high order bit" per the doc's bit table).
-    ------------------------------------------------------------------------
+    -- Live raster position for status reads and freeze capture.
     cur_field : IN  std_logic;             -- 0=odd, 1=even (uv202_timing.field)
     cur_vpos  : IN  unsigned(8 DOWNTO 0);  -- uv202_timing.vpos
 
-    ------------------------------------------------------------------------
-    -- Freeze capture event. Real hardware: falling edge of EXT INT while
-    -- the command register's FRZ bit is set latches the current X/Y
-    -- position into the X-Freeze/Y-Freeze registers (MAME's ext_int_w()).
-    -- EXT INT itself is driven by the joystick NE555/SMI circuitry, which
-    -- doesn't exist yet in this core - `capture_stb`/`capture_x` are
-    -- exposed now, tied off by the (not yet written) top-level until that
-    -- circuit exists, so this entity's port list doesn't need to change
-    -- when it does.
-    ------------------------------------------------------------------------
+    -- Falling EXT INT capture while FRZ is set.
     capture_stb : IN  std_logic;
     capture_x   : IN  uv8;
 
-    ------------------------------------------------------------------------
-    -- Command register bit taps, decoded here once so the fetcher/renderer
-    -- (not yet written) and sys_bus/arbiter don't each need their own copy
-    -- of the bit-position knowledge.
-    ------------------------------------------------------------------------
-    -- NOTE: these are NOT named cmd_x_zm/cmd_frz/etc. - VHDL identifiers
-    -- are case-insensitive, so a port with that name would be the exact
-    -- same identifier as (and would shadow) the CMD_X_ZM/CMD_FRZ/... bit-
-    -- position constants pulled in from uv202_pack, silently breaking the
-    -- CONSTANT ..._BIT := CMD_X_ZM assignments below. Prefixed with `o_`
-    -- instead.
+    -- Decoded command register outputs. o_ avoids clashes with CMD_* constants.
     o_x_zm  : OUT std_logic;  -- X zoom (double width)
     o_frz   : OUT std_logic;  -- freeze enable
     o_enb   : OUT std_logic;  -- video enable
     o_int   : OUT std_logic;  -- Y-interrupt enable
     o_kbd   : OUT std_logic;  -- keypad column 8 select / general output
     o_y_zm  : OUT std_logic;  -- Y zoom (double height)
-    o_a_b   : OUT std_logic;  -- object list select, 0=A 1=B
+    o_a_b   : OUT std_logic;  -- object list select, 1=A 0=B
 
     y_int     : OUT uv8;      -- raw Y-interrupt register (low 8 bits)
     o_yint_ho : OUT std_logic;-- Y-interrupt register high order bit (cmd bit 7)
 
-    -- Other control registers consumed by the eventual renderer.  Exposing
-    -- them here avoids teaching downstream modules the CPU register map.
+    -- Renderer controls.
     final_mod  : OUT uv8;
     background : OUT uv8;
 
-    ------------------------------------------------------------------------
-    -- Object RAM read port for the future DMA fetcher. Separate from
-    -- reg_addr/reg_rdata so a fetcher can read object bytes on any BRCLK
-    -- without contending with a same-cycle CPU register access. MVP:
-    -- combinational read, object RAM only (0x00-0x8F) - the fetcher
-    -- addresses this directly, no wait-stating needed since it's the
-    -- fetcher's own local storage, not the shared CPU bus.
-    ------------------------------------------------------------------------
+    -- Independent combinational object-RAM read port for the fetcher.
     obj_addr  : IN  uv8;
     obj_rdata : OUT uv8
     );
@@ -198,15 +137,15 @@ BEGIN
       reg_rdata <= r_freeze_x;
 
     ELSIF unsigned(reg_addr) = to_unsigned(REG_Y_FREEZE_LO, 8) THEN
-      reg_rdata <= std_logic_vector(r_freeze_y(7 DOWNTO 0));
+      reg_rdata <= r_freeze_y(7 DOWNTO 0);
 
     ELSIF unsigned(reg_addr) = to_unsigned(REG_Y_FREEZE_HI, 8) THEN
       -- bit 7: odd/even field: bit 1: current-Y counter MSB: bit 0:
       -- Y-freeze MSB. Matches MAME's REGISTER_Y_FREEZE_HIGH packing.
-      reg_rdata <= cur_field & "00000" & cur_vpos(8) & r_freeze_y(8);
+      reg_rdata <= unsigned(cur_field & "00000" & cur_vpos(8) & r_freeze_y(8));
 
     ELSIF unsigned(reg_addr) = to_unsigned(REG_CURRENT_Y_LO, 8) THEN
-      reg_rdata <= std_logic_vector(cur_vpos(7 DOWNTO 0));
+      reg_rdata <= cur_vpos(7 DOWNTO 0);
 
     ELSIF unsigned(reg_addr) <= to_unsigned(16#8F#, 8) THEN
       reg_rdata <= obj_ram(to_integer(unsigned(reg_addr)));

@@ -88,7 +88,7 @@ BEGIN
           new_sound_clk := io_wdata(4);
 
           IF sound_clk_l = '0' AND new_sound_clk = '1' THEN
-            audio_code_l <= key_latch_l(1 DOWNTO 0);
+            audio_code_l <= std_logic_vector(key_latch_l(1 DOWNTO 0));
             audio_stb_l  <= '1';
           END IF;
 
@@ -123,7 +123,7 @@ BEGIN
     END IF;
 
     IF io_rd = '1' AND unsigned(io_addr) = to_unsigned(16#01#, 8) THEN
-      io_rdata <= "0000" & rows;
+      io_rdata <= unsigned("0000" & rows);
     END IF;
   END PROCESS;
 

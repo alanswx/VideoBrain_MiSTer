@@ -133,7 +133,7 @@ PACKAGE uv202_pack IS
   CONSTANT CMD_INT       : natural := 3;  -- Y-interrupt enable
   CONSTANT CMD_KBD       : natural := 4;  -- keypad column 8 select (general output)
   CONSTANT CMD_Y_ZM      : natural := 5;  -- Y zoom (double height)
-  CONSTANT CMD_A_B       : natural := 6;  -- object list select, 0=A 1=B
+  CONSTANT CMD_A_B       : natural := 6;  -- object list select, 1=A 0=B
   CONSTANT CMD_YINT_HO   : natural := 7;  -- Y-interrupt register high order bit
 
   ----------------------------------------------------------------------------
@@ -160,15 +160,7 @@ PACKAGE uv202_pack IS
     ACC_RAM_WR,
     ACC_CART_RD,
     ACC_CART_WR,
-    ACC_RES2,         -- RES2 (2000-27FF): doc lists 4-6 BRCLK for this
-                       -- region, same as RAM/cart - previously conflated
-                       -- with ACC_NONE/RES1 (STATUS.md open decision #1,
-                       -- now resolved: RES2 is its own class so it takes
-                       -- the RAM/cart wait path in the arbiter instead of
-                       -- silently getting RES1's 0-wait treatment). CPU
-                       -- writes into ROM space are classified the same way
-                       -- (bus timing doesn't care that the write is a
-                       -- no-op against real ROM).
+    ACC_RES2,         -- RES2 timing class; same arbiter body as RAM/cart
     ACC_DMA0_RD,      -- primary UV201 DMA fetch
     ACC_DMA1_RD       -- secondary UV201 DMA fetch
   );
@@ -184,11 +176,8 @@ PACKAGE uv202_pack IS
 
   FUNCTION cpu_addr_fold(a : unsigned(13 DOWNTO 0)) RETURN unsigned;
 
-  -- Base wait components in BRCLKs, before the modulo-4 UV201-register-read
-  -- stretch and DMA-collision extensions described in the doc. In the MVP
-  -- arbiter WAIT_SETUP_PENALTY is represented structurally by ST_SETUP;
-  -- WAIT_CPU_RDWR/WAIT_DMA_BODY are body lengths only. A separate ST_DONE
-  -- grant cycle currently adds one more BRCLK to the end-to-end latency.
+  -- Base wait components in BRCLKs. ST_SETUP is the setup penalty;
+  -- WAIT_CPU_RDWR and WAIT_DMA_BODY are body lengths.
   CONSTANT WAIT_SETUP_PENALTY   : natural := 1;  -- 1 BRCLK setup before any access
   CONSTANT WAIT_CPU_RDWR        : natural := 3;  -- plain RAM/cart access body
   CONSTANT WAIT_DMA_BODY        : natural := 3;  -- one DMA fetch body

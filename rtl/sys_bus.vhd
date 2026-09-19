@@ -1,48 +1,7 @@
 --------------------------------------------------------------------------------
--- VideoBrain unified CPU-side memory bus
---------------------------------------------------------------------------------
--- Reference: kevtris "Videobrain Unwrapped" V0.05, "Address Space" / "CPU
---            Bus" section. uv202_pack's ADDR_*/cpu_addr_fold.
---------------------------------------------------------------------------------
---
--- WHY THIS MODULE EXISTS: f8_busif drives a generic ext_addr/ext_rd/ext_wr/
--- ext_wdata/ext_rdata interface (see f8_busif.vhd header) but has no idea
--- what's actually on the other end of it. uv202_arbiter separately decides
--- WHEN an access may proceed (wait-stating) but doesn't touch data at all.
--- Neither module can be exercised meaningfully without something that
--- decodes ext_addr and actually returns/stores a byte. This is that
--- something: a combinational read mux + per-device write-enable demux over
--- RES1 ROM, RES2 ROM, 1K system RAM, the UV201 register file, and a
--- cartridge stub.
---
--- SCOPE (MVP):
---   - RES1/RES2: modeled as plain arrays, contents all-zero. No ROM image
---     loading mechanism exists yet (MiSTer-style loader / init-file is a
---     top-level integration concern, not this module's job) - TODO,
---     non-blocking for bring-up work that doesn't depend on real ROM
---     contents (register/DMA/timing bring-up).
---   - RAM: 1K (0x0C00-0x0FFF), combinational read / registered write.
---     Real hardware is 8x 2102 (async SRAM); modeling it as combinational-
---     read here assumes the wait-state handshake (ext_req/ext_grant in
---     f8_busif, already flagged unverified there) has already burned
---     enough cycles that memory access itself can be zero-latency from
---     this module's point of view. If/when RAM gets inferred as real
---     block RAM with registered read, that adds exactly the 1-cycle
---     latency the arbiter's still-undecided ST_DONE timing (STATUS.md
---     open decision #4) was already weighing - worth resolving both
---     together rather than separately.
---   - UV201 registers: routed to uv201_regs.vhd (separate module, already
---     written) via its reg_addr/reg_we/reg_wdata/reg_rdata port.
---   - Cartridge: stub only. Reads return 0xFF (matches kevtris's own note
---     about open-bus/pulldown behavior being implementation-defined - 0xFF
---     rather than his 0x00 perf-board choice is arbitrary and doesn't
---     matter for MVP bring-up); writes are dropped. Real cartridge slot
---     modeling (ROM sizes, bankswitching, RAM-in-cart per the doc's
---     0900-0BFF note) is out of scope here - a future
---     videobrain_cart_slot.vhd, not this file's job.
---   - Buffered-bus: now exposed through buffered_bus.vhd using the SAME
---     RES2 and system-RAM arrays as the CPU side.  Cartridge DMA reads still
---     return the cartridge stub value until the slot module exists.
+-- VideoBrain unified CPU and buffered memory bus
+-- CPU map: RES1, UV201, cartridge windows, 1K RAM, RES2.
+-- Buffered bus shares RES2/RAM storage with the CPU side.
 --------------------------------------------------------------------------------
 
 LIBRARY ieee;
@@ -78,9 +37,7 @@ ENTITY sys_bus IS
     uv_capture_stb : IN std_logic;
     uv_capture_x   : IN uv8;
 
-    -- UV201 command-register bit taps and object-RAM read port, passed
-    -- straight through from uv201_regs.vhd for consumption by the (not yet
-    -- written) fetcher/renderer and by videobrain_top.vhd
+    -- UV201 controls and object-RAM fetch port.
     uv_o_x_zm   : OUT std_logic;
     uv_o_frz    : OUT std_logic;
     uv_o_enb    : OUT std_logic;
@@ -166,15 +123,14 @@ BEGIN
       obj_rdata   => uv_obj_rdata
       );
 
-  uv_reg_addr  <= std_logic_vector(a_eff(7 DOWNTO 0));
+  uv_reg_addr  <= a_eff(7 DOWNTO 0);
   uv_reg_we    <= ext_wr WHEN (a_eff >= to_unsigned(ADDR_UV201_LO, 14) AND
                                 a_eff <= to_unsigned(ADDR_UV201_HI, 14))
                   ELSE '0';
   uv_reg_wdata <= ext_wdata;
 
   ----------------------------------------------------------------------------
-  -- RAM write (registered). Read is combinational, folded into rdata mux
-  -- below - see MVP scope note at top of file re: latency.
+  -- RAM write. Read is combinational.
   ----------------------------------------------------------------------------
 
   PROCESS (clk, reset_na) IS

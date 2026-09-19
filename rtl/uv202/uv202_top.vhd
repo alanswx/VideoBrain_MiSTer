@@ -5,9 +5,7 @@
 -- to stand on their own: clock enables, raster timing, and bus arbitration.
 --
 -- Deliberately NOT included here:
---   * f8_busif: that is CPU/ROMC glue, not UV202 silicon.  Its ext_grant
---     semantics are still under review and should not be hidden inside this
---     block until verified.
+--   * f8_busif: CPU/ROMC glue lives at machine level.
 --   * memory/data muxing: sys_bus/buffered_bus own address/data routing.
 --   * F3853 SMI/interrupt handling: separate device at machine level.
 --------------------------------------------------------------------------------
