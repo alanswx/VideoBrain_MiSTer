@@ -83,10 +83,23 @@ Three defects had to be fixed to get there, each found in simulation:
 - The fetcher started on hblank_falling, which is already the first active
   pixel, so every object drew nine pixels right of its programmed X.
 
-Known remaining video defect: in Tennis some sprites render partially
-corrupted while others are clean. The likely causes are the FIFO's
-documented 10-to-8 spill hysteresis and the xcopy path, neither of which has
-been checked against hardware or MAME. This is the first thing to chase.
+Tennis renders correctly: solid net, three clean player sprites, intact
+score row. Blackjack draws black and red card suits on green, which
+exercises the per-object colour path and the 32-entry palette.
+
+The corruption that was there earlier was fetch starvation. The fetcher
+read all seven registers of every object before testing whether it was on
+the scanline, which is 112 of the 222 available BRCLK per line before any
+bitmap DMA; eight lines per frame never finished and 137 FIFO entries were
+discarded by the HBLANK clear. Rejecting on the start row after three
+reads fixed it.
+
+docs/ holds the collected hardware documentation: both Umtech patents, the
+Bomarc schematics, Sean Riddle's board netlist, and the 1,671-message
+Channel-F/VideoBrain group archive. kevtris's 2013 logic-analyzer sessions
+in that archive are the only measurements of real silicon and outrank both
+the patents and MAME where they disagree - height is six bits with 0
+meaning 64 and bits 6/7 ignored, and width 0 means 32 bytes.
 
 ## Deliberately incomplete
 
@@ -100,8 +113,11 @@ been checked against hardware or MAME. This is the first thing to chase.
 
 ## Next validation order
 
-1. Chase the corrupted sprites in Tennis: FIFO spill hysteresis, xcopy, and
-   the X/Y zoom paths, none of which the fetcher implements fully.
+1. Bitmap DMA is one byte per request; hardware fetches in two-byte chunks
+   as soon as the FIFO has slots. Affects cadence, not correctness.
+   The fetcher also does not implement xcopy's interaction with zoom, and
+   the hardware's mutation of segment pointers and heights as it draws is
+   not modelled at all.
 2. Add focused simulation for `f8_busif`: ROMC 00/01/02/03/05/0C/0E/11 with
    delayed grants. Reads latch `ext_rdata` at phase 2 regardless of
    `ext_grant`, which is only safe for the zero-wait RES1 path.
