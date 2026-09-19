@@ -12,3 +12,5 @@ verilator/*.vcd
 # ROM and cartridge images used for testing. This repo is public; keeping the
 # images out of it is deliberate. Point the sims at them with --res1/--res2/--cart.
 /software
+verilator/imgui.ini
+verilator/rtl_v/
