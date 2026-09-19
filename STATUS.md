@@ -65,8 +65,30 @@ one 16x16 object:
   `hblank_falling`, which is already the first active pixel, and needs 9 BRCLK
   to reach its first FIFO push. Real hardware fills the FIFO during HBLANK.
   This is the fetch-cadence item below, now quantified.
-- The BIOS parks every object (Y = 0x1FF, DX = DY = 0) and then waits. It can
-  never proceed: no interrupt source is instantiated.
+- The BIOS parks every object (Y = 0x1FF, DX = DY = 0) and then waits.
+
+All 16 cartridges were run for 50 frames. Every one of them stops at the same
+place: PC0=427D, PC1=41D2, DC0=15E5, cmd=FF, bg=1F, white screen, no objects.
+
+The cartridge read path itself is correct byte for byte. At that point the
+accumulator holds the cartridge byte at 0x15E4, checked against the images for
+three carts (0x2A, 0x18, 0x08). So download, cart_rom, the sys_bus decode and
+ROMC 02 all work; the BIOS is reading the cartridge and choosing not to draw.
+
+Interrupts are the reason it cannot proceed, and the gap is wider than wiring:
+
+- `f8_cpu` has no interrupt request input. Its port list is dr/dw/dv, romc,
+  tick, phase, the two I/O ports, clk/ce/reset_na and the debug outputs.
+- The interrupt microcode exists. `OP_INTERRUPT` is x"2E" (`f8_pack.vhd:90`)
+  and its three-state sequence (ROMC 1C, 0F, 13) is in the table.
+- Nothing dispatches to it. `f8_cpu.vhd` references only `OP_RESET`, at
+  lines 236-241. That block is the pattern an interrupt entry would copy.
+- `f8_busif` leaves ROMC 0F and 13 as NULL, so there is no vector source.
+- `uv201_yint` and `videobrain_io` are not instantiated.
+
+Upstream Channel F does not use interrupts, which is why the vendored CPU has
+none. Adding them means diverging from the blobs whose hashes are recorded
+above; that divergence should be deliberate and noted when it happens.
 
 ## Deliberately incomplete
 
