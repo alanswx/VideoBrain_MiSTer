@@ -35,6 +35,7 @@
 #define BUS(sig)  (top->rootp->top__DOT__core__DOT__u_sys_bus__DOT__##sig)
 #define UVR(sig)  (top->rootp->top__DOT__core__DOT__u_sys_bus__DOT__u_uv201_regs__DOT__##sig)
 #define FET(sig)  (top->rootp->top__DOT__core__DOT__u_fetcher__DOT__##sig)
+#define SMI(sig)  (top->rootp->top__DOT__core__DOT__u_smi__DOT__##sig)
 #define RES1      BUS(res1_rom)
 #define RES2      BUS(res2_rom)
 #define CART      BUS(cart_rom)
@@ -324,6 +325,13 @@ static void dump_state(FILE* f, long frame, const FrameGrabber& fg, bool want_ra
             (unsigned)CPU(acc), (unsigned)CPU(visar),
             (unsigned)CORE(romc), (unsigned)CORE(phase));
 
+    fprintf(f, "scratch 0-F:");
+    for (int i = 0; i < 16; i++) fprintf(f, " %02X", (unsigned)CPU(scratch_regs)[i]);
+    fprintf(f, "\nISAR=%02X (S)=%02X  buffer 10-1F:",
+            (unsigned)CPU(visar), (unsigned)CPU(scratch_regs)[CPU(visar) & 63]);
+    for (int i = 0x10; i < 0x20; i++) fprintf(f, " %02X", (unsigned)CPU(scratch_regs)[i]);
+    fprintf(f, "\n");
+
     fprintf(f, "-- UV201 --\n");
     fprintf(f, "cmd=%02X bg=%02X fmod=%02X y_int=%02X  video_en=%d x_zoom=%d y_zoom=%d\n",
             (unsigned)UVR(r_cmd), (unsigned)UVR(r_bg), (unsigned)UVR(r_fmod),
@@ -491,6 +499,7 @@ int main(int argc, char** argv) {
     int  max_level = 0, max_state = 0;
     int  state_seen = 0;
     bool decide_logged = false;
+    long ext_int_n = 0, int_ack_n = 0, int_req_n = 0, io_wr_n = 0;
 
     while (fg.frame <= frames && cycles < max_cycles && !Verilated::gotFinish()) {
 
@@ -500,6 +509,14 @@ int main(int argc, char** argv) {
 
         top->clk_sys = 1;
         top->eval();
+
+        // Interrupt path, sampled every clk: these are one-clk pulses.
+        if (probe) {
+            if (CORE(ext_int)) ext_int_n++;
+            if (CORE(int_ack)) int_ack_n++;
+            if (CORE(int_req)) int_req_n++;
+            if (CORE(io_wr)) io_wr_n++;
+        }
 
         if (probe && CORE(brclk_ena)) {
             if (CORE(fifo_wr_en) && CORE(fifo_writable)) pushes++;
@@ -590,10 +607,14 @@ int main(int argc, char** argv) {
             if (do_dump) dump_state(df, f, fg, want_ram);
 
             if (probe) {
-                printf("frame %5ld  lines=%ld push=%ld pop=%ld umireq=%ld dma=%ld "
-                       "maxlvl=%d maxstate=%d states=%04X\n",
-                       f, lines_started, pushes, pops, umireq, dmagrant,
-                       max_level, max_state, state_seen);
+                printf("frame %5ld  push=%ld pop=%ld maxstate=%d | "
+                       "io_wr=%ld extint=%ld req=%ld ack=%ld | "
+                       "smi vec=%04X ext_en=%d tmr_en=%d req=%d\n",
+                       f, pushes, pops, max_state,
+                       io_wr_n, ext_int_n, int_req_n, int_ack_n,
+                       (unsigned)SMI(vec), (int)SMI(ext_enable),
+                       (int)SMI(timer_enable), (int)SMI(request));
+                ext_int_n = int_ack_n = int_req_n = io_wr_n = 0;
                 pushes = pops = umireq = dmagrant = lines_started = 0;
                 max_level = max_state = state_seen = 0;
                 decide_logged = false;
