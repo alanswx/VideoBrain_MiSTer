@@ -84,8 +84,6 @@ ARCHITECTURE rtl OF f8_busif IS
       result := ACC_NONE;
     ELSIF a_eff <= to_unsigned(ADDR_UV201_HI, 14) THEN
       result := ACC_UV201_WR WHEN is_write = '1' ELSE ACC_UV201_RD;
-    ELSIF a_eff <= to_unsigned(ADDR_CART1_HI, 14) THEN
-      result := ACC_CART_WR WHEN is_write = '1' ELSE ACC_CART_RD;
     ELSIF a_eff <= to_unsigned(ADDR_RAM_HI, 14) THEN
       result := ACC_RAM_WR WHEN is_write = '1' ELSE ACC_RAM_RD;
     ELSIF a_eff <= to_unsigned(ADDR_CART2_HI, 14) THEN

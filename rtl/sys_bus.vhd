@@ -174,9 +174,6 @@ BEGIN
     ELSIF a_eff <= to_unsigned(ADDR_UV201_HI, 14) THEN
       rdata_l <= uv_reg_rdata;
 
-    ELSIF a_eff <= to_unsigned(ADDR_CART1_HI, 14) THEN
-      rdata_l <= (OTHERS => '1');  -- cartridge-mapped window stub, open bus
-
     ELSIF a_eff <= to_unsigned(ADDR_RAM_HI, 14) THEN
       rdata_l <= sys_ram(to_integer(a_eff - to_unsigned(ADDR_RAM_LO, 14)));
 

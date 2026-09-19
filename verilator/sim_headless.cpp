@@ -542,7 +542,7 @@ int main(int argc, char** argv) {
     int  max_level = 0, max_state = 0;
     int  state_seen = 0;
     bool decide_logged = false;
-    long ext_int_n = 0, int_ack_n = 0, int_req_n = 0, io_wr_n = 0;
+    long ext_int_n = 0, int_ack_n = 0, int_req_n = 0, io_wr_n = 0, overrun_n = 0;
 
     while (fg.frame <= frames && cycles < max_cycles && !Verilated::gotFinish()) {
 
@@ -562,6 +562,9 @@ int main(int argc, char** argv) {
 
         // Interrupt path, sampled every clk: these are one-clk pulses.
         if (probe) {
+            // Fetcher still walking the list when the line ends: it ran out
+            // of time and the rest of the line's objects are lost.
+            if (CORE(hblank_rising) && FET(state) != 0) overrun_n++;
             if (CORE(ext_int)) ext_int_n++;
             if (CORE(int_ack)) int_ack_n++;
             if (CORE(int_req)) int_req_n++;
@@ -658,13 +661,13 @@ int main(int argc, char** argv) {
 
             if (probe) {
                 printf("frame %5ld  push=%ld pop=%ld maxstate=%d | "
-                       "io_wr=%ld extint=%ld req=%ld ack=%ld | "
+                       "overrun=%ld extint=%ld req=%ld ack=%ld | "
                        "smi vec=%04X ext_en=%d tmr_en=%d req=%d\n",
                        f, pushes, pops, max_state,
-                       io_wr_n, ext_int_n, int_req_n, int_ack_n,
+                       overrun_n, ext_int_n, int_req_n, int_ack_n,
                        (unsigned)SMI(vec), (int)SMI(ext_enable),
                        (int)SMI(timer_enable), (int)SMI(request));
-                ext_int_n = int_ack_n = int_req_n = io_wr_n = 0;
+                ext_int_n = int_ack_n = int_req_n = io_wr_n = overrun_n = 0;
                 pushes = pops = umireq = dmagrant = lines_started = 0;
                 max_level = max_state = state_seen = 0;
                 decide_logged = false;

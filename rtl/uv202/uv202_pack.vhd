@@ -70,11 +70,11 @@ PACKAGE uv202_pack IS
   CONSTANT ADDR_RES1_LO   : natural := 16#0000#;  -- RES1 ROM, 2K, 0 wait
   CONSTANT ADDR_RES1_HI   : natural := 16#07FF#;
 
-  CONSTANT ADDR_UV201_LO  : natural := 16#0800#;  -- UV201 regs, 6-10 BRCLK wait
-  CONSTANT ADDR_UV201_HI  : natural := 16#08FF#;
-
-  CONSTANT ADDR_CART1_LO  : natural := 16#0900#;  -- cart-mapped window (/800-BFF range)
-  CONSTANT ADDR_CART1_HI  : natural := 16#0BFF#;
+  -- UV201 regs, 6-10 BRCLK wait. The 256-byte page is mirrored four times
+  -- across 0800-0BFF: A8 and A9 are undecoded, and UV202 pin 37 is named
+  -- /800-BFF. Register selection is a_eff(7 DOWNTO 0).
+  CONSTANT ADDR_UV201_LO  : natural := 16#0800#;
+  CONSTANT ADDR_UV201_HI  : natural := 16#0BFF#;
 
   CONSTANT ADDR_RAM_LO    : natural := 16#0C00#;  -- system RAM, 1K (8x 2102), 4-6 BRCLK
   CONSTANT ADDR_RAM_HI    : natural := 16#0FFF#;

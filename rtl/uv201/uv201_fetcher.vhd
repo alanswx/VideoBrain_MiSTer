@@ -23,6 +23,11 @@ ENTITY uv201_fetcher IS
     video_en   : IN  std_logic;
     list_a     : IN  std_logic;
 
+    -- Global pixel doubling from the command register. X zoom also doubles
+    -- the object's start column, as in MAME screen_update().
+    x_zoom     : IN  std_logic;
+    y_zoom     : IN  std_logic;
+
     obj_addr   : OUT uv8;
     obj_rdata  : IN  uv8;
 
@@ -138,7 +143,9 @@ BEGIN
 
   PROCESS(clk, reset_na) IS
     VARIABLE y_v      : natural RANGE 0 TO 511;
-    VARIABLE height_v : natural RANGE 0 TO 64;
+    VARIABLE height_v : natural RANGE 0 TO 255;
+    VARIABLE span_v   : natural RANGE 0 TO 510;
+    VARIABLE xstart_v : natural RANGE 0 TO 510;
     VARIABLE row_v    : natural RANGE 0 TO 511;
     VARIABLE width_v  : natural RANGE 0 TO 31;
     VARIABLE base_v   : unsigned(12 DOWNTO 0);
@@ -215,18 +222,34 @@ BEGIN
 
           WHEN ST_DECIDE =>
             y_v := to_integer(xy_hi_l(7) & y_lo_l);
-            height_v := to_integer(dy_l(5 DOWNTO 0));
-            IF height_v = 0 THEN
-              height_v := 64;
-            END IF;
+            -- 0830+n is a full byte of height. Height 0 draws nothing,
+            -- as in MAME; real hardware reportedly wraps to 256 and
+            -- corrupts the FIFO, which no software should rely on.
+            height_v := to_integer(dy_l);
             width_v := to_integer(dx_l(4 DOWNTO 0));
 
-            IF to_integer(vpos) >= y_v AND
-               to_integer(vpos) < y_v + height_v AND
-               width_v /= 0 AND
-               to_integer(x_l) >= xdelta_l THEN
+            IF y_zoom = '1' THEN
+              span_v := height_v * 2;
+            ELSE
+              span_v := height_v;
+            END IF;
 
-              row_v := to_integer(vpos) - y_v;
+            IF x_zoom = '1' THEN
+              xstart_v := to_integer(x_l) * 2;
+            ELSE
+              xstart_v := to_integer(x_l);
+            END IF;
+
+            IF to_integer(vpos) >= y_v AND
+               to_integer(vpos) < y_v + span_v AND
+               width_v /= 0 AND
+               xstart_v >= xdelta_l THEN
+
+              IF y_zoom = '1' THEN
+                row_v := (to_integer(vpos) - y_v) / 2;
+              ELSE
+                row_v := to_integer(vpos) - y_v;
+              END IF;
               base_v := rp_hi_l(4 DOWNTO 0) & rp_lo_l;
               IF dx_l(7) = '1' THEN
                 offset_v := row_v;
@@ -242,9 +265,9 @@ BEGIN
               color_l <= std_logic_vector(dx_l(6 DOWNTO 5)) &
                          rp_hi_l(5) & rp_hi_l(6) & rp_hi_l(7);
 
-              IF to_integer(x_l) > xdelta_l THEN
-                gap_l <= to_unsigned(to_integer(x_l) - xdelta_l, 8);
-                xdelta_l <= to_integer(x_l);
+              IF xstart_v > xdelta_l THEN
+                gap_l <= to_unsigned(xstart_v - xdelta_l, 8);
+                xdelta_l <= xstart_v;
                 state <= ST_GAP_PUSH;
               ELSE
                 state <= ST_DMA_WAIT;
@@ -267,7 +290,11 @@ BEGIN
 
           WHEN ST_DMA_PUSH =>
             IF fifo_writable = '1' THEN
-              xdelta_l <= xdelta_l + 8;
+              IF x_zoom = '1' THEN
+                xdelta_l <= xdelta_l + 16;
+              ELSE
+                xdelta_l <= xdelta_l + 8;
+              END IF;
 
               IF bytes_left > 1 THEN
                 bytes_left <= bytes_left - 1;

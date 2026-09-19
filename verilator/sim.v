@@ -131,6 +131,7 @@ module top(
    reg [4:0] shift_color;
    reg [7:0] gap_cnt;            // background pixels left in the current gap
    reg       shift_active;
+   reg       dbl;                 // X zoom: second pixel of the current pair
 
    wire active = ~hblank & ~vblank;
    wire need_entry = active & ~shift_active & (gap_cnt == 8'd0) & fifo_valid;
@@ -148,21 +149,37 @@ module top(
             shift_active <= 1'b0;
             shift_cnt    <= 3'd0;
             gap_cnt      <= 8'd0;
+            dbl          <= 1'b0;
          end else if (shift_active) begin
-            shift_reg <= {shift_reg[6:0], 1'b0};
-            if (shift_cnt == 3'd0) shift_active <= 1'b0;
-            else                   shift_cnt <= shift_cnt - 3'd1;
+            // With X zoom each bit covers two pixels, so only advance on the
+            // second of the pair.
+            if (x_zoom & ~dbl) begin
+               dbl <= 1'b1;
+            end else begin
+               dbl <= 1'b0;
+               shift_reg <= {shift_reg[6:0], 1'b0};
+               if (shift_cnt == 3'd0) shift_active <= 1'b0;
+               else                   shift_cnt <= shift_cnt - 3'd1;
+            end
          end else if (gap_cnt != 8'd0) begin
             gap_cnt <= gap_cnt - 8'd1;
          end else if (fifo_valid) begin
             if (ent_gap) begin
                // This cycle emits the gap's first pixel.
                gap_cnt <= (ent_payload == 8'd0) ? 8'd0 : ent_payload - 8'd1;
+            end else if (x_zoom) begin
+               // bit 7 is emitted now and once more; the shift happens then.
+               shift_reg    <= ent_payload;
+               shift_color  <= ent_color;
+               shift_cnt    <= 3'd7;
+               shift_active <= 1'b1;
+               dbl          <= 1'b1;
             end else begin
                shift_reg    <= {ent_payload[6:0], 1'b0};
                shift_color  <= ent_color;
                shift_cnt    <= 3'd6;   // bit 7 emitted now, 6 more then the last
                shift_active <= 1'b1;
+               dbl          <= 1'b0;
             end
          end
       end

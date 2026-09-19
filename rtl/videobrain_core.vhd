@@ -108,6 +108,7 @@ ARCHITECTURE rtl OF videobrain_core IS
 
   SIGNAL po_a_n_l, po_b_n_l, pi_b_n_l : uv8;
   SIGNAL uv_o_kbd_l : std_logic;
+  SIGNAL x_zoom_l, y_zoom_l : std_logic;
 
   SIGNAL io_addr  : uv8;
   SIGNAL io_rd    : std_logic;
@@ -266,12 +267,12 @@ BEGIN
       uv_cur_vpos    => vpos_l,
       uv_capture_stb => '0',
       uv_capture_x   => (OTHERS => '0'),
-      uv_o_x_zm      => x_zoom,
+      uv_o_x_zm      => x_zoom_l,
       uv_o_frz       => uv_o_frz_l,
       uv_o_enb       => uv_o_enb,
       uv_o_int       => uv_o_int_l,
       uv_o_kbd       => uv_o_kbd_l,
-      uv_o_y_zm      => y_zoom,
+      uv_o_y_zm      => y_zoom_l,
       uv_o_a_b       => uv_o_a_b,
       uv_o_yint_ho   => uv_yint_ho_l,
       uv_y_int       => uv_y_int_l,
@@ -316,6 +317,8 @@ BEGIN
       vpos          => vpos_l,
       video_en      => uv_o_enb,
       list_a        => uv_o_a_b,
+      x_zoom        => x_zoom_l,
+      y_zoom        => y_zoom_l,
       obj_addr      => uv_obj_addr,
       obj_rdata     => uv_obj_rdata,
       bb_addr       => bb_addr,
@@ -347,6 +350,8 @@ BEGIN
   field    <= field_l;
   vpos     <= vpos_l;
   video_en <= uv_o_enb;
+  x_zoom   <= x_zoom_l;
+  y_zoom   <= y_zoom_l;
   brclk_ena <= brclk_ena_l;
 
 END ARCHITECTURE rtl;
