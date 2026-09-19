@@ -96,6 +96,11 @@ ENTITY uv201_regs IS
     y_int     : OUT uv8;      -- raw Y-interrupt register (low 8 bits)
     o_yint_ho : OUT std_logic;-- Y-interrupt register high order bit (cmd bit 7)
 
+    -- Other control registers consumed by the eventual renderer.  Exposing
+    -- them here avoids teaching downstream modules the CPU register map.
+    final_mod  : OUT uv8;
+    background : OUT uv8;
+
     ------------------------------------------------------------------------
     -- Object RAM read port for the future DMA fetcher. Separate from
     -- reg_addr/reg_rdata so a fetcher can read object bytes on any BRCLK
@@ -158,9 +163,9 @@ BEGIN
         IF unsigned(reg_addr) = to_unsigned(REG_Y_INTERRUPT, 8) THEN
           r_y_int <= reg_wdata;
         ELSIF unsigned(reg_addr) = to_unsigned(REG_FINAL_MOD, 8) THEN
-          r_fmod <= reg_wdata;
+          r_fmod <= "000" & reg_wdata(4 DOWNTO 0);
         ELSIF unsigned(reg_addr) = to_unsigned(REG_BACKGROUND, 8) THEN
-          r_bg <= reg_wdata;
+          r_bg <= "000" & reg_wdata(4 DOWNTO 0);
         ELSIF unsigned(reg_addr) = to_unsigned(REG_COMMAND, 8) THEN
           r_cmd <= reg_wdata;
         ELSIF unsigned(reg_addr) <= to_unsigned(16#8F#, 8) THEN
@@ -227,5 +232,7 @@ BEGIN
   o_a_b     <= r_cmd(CMD_A_B_BIT);
   o_yint_ho <= r_cmd(CMD_YINT_HO_BIT);
   y_int     <= r_y_int;
+  final_mod <= r_fmod;
+  background <= r_bg;
 
 END ARCHITECTURE rtl;

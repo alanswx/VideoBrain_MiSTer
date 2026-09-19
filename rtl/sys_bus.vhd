@@ -40,12 +40,9 @@
 --     modeling (ROM sizes, bankswitching, RAM-in-cart per the doc's
 --     0900-0BFF note) is out of scope here - a future
 --     videobrain_cart_slot.vhd, not this file's job.
---   - Buffered-bus (what the UV201 DMA fetcher sees, per the doc's
---     "Buffered Bus" section) is NOT modeled here at all - this module is
---     CPU-side only. The fetcher (not yet written) will need its own,
---     narrower 8K-address-space view of RES2/RAM/cart; deliberately not
---     retrofitted onto this entity's interface preemptively since we don't
---     yet know what shape uv201_fetcher.vhd wants it in.
+--   - Buffered-bus: now exposed through buffered_bus.vhd using the SAME
+--     RES2 and system-RAM arrays as the CPU side.  Cartridge DMA reads still
+--     return the cartridge stub value until the slot module exists.
 --------------------------------------------------------------------------------
 
 LIBRARY ieee;
@@ -68,6 +65,12 @@ ENTITY sys_bus IS
     ext_wdata : IN  uv8;
     ext_rdata : OUT uv8;
 
+    -- UV201 buffered-bus read view.  This shares the same RES2/RAM backing
+    -- arrays as the CPU side; buffered_bus.vhd supplies the narrower 8K
+    -- decode.  Cartridge data remains a stub until the slot module exists.
+    bb_addr  : IN  unsigned(12 DOWNTO 0);
+    bb_rdata : OUT uv8;
+
     -- UV201 status-register inputs, passed straight through to
     -- uv201_regs.vhd (see that entity for why these exist)
     uv_cur_field   : IN std_logic;
@@ -87,6 +90,8 @@ ENTITY sys_bus IS
     uv_o_a_b    : OUT std_logic;
     uv_o_yint_ho: OUT std_logic;
     uv_y_int    : OUT uv8;
+    uv_final_mod : OUT uv8;
+    uv_background: OUT uv8;
 
     uv_obj_addr  : IN  uv8;
     uv_obj_rdata : OUT uv8
@@ -114,6 +119,17 @@ ARCHITECTURE rtl OF sys_bus IS
   SIGNAL uv_reg_rdata : uv8;
 
   SIGNAL rdata_l : uv8;
+
+  SIGNAL bb_res2_sel   : std_logic;
+  SIGNAL bb_res2_addr  : unsigned(10 DOWNTO 0);
+  SIGNAL bb_res2_rdata : uv8;
+  SIGNAL bb_ram_sel    : std_logic;
+  SIGNAL bb_ram_addr   : unsigned(9 DOWNTO 0);
+  SIGNAL bb_ram_rdata  : uv8;
+  SIGNAL bb_cart_sel   : std_logic;
+  SIGNAL bb_cart_addr  : unsigned(11 DOWNTO 0);
+  SIGNAL bb_cart_rdata : uv8;
+  SIGNAL bb_open_bus   : std_logic;
 
 BEGIN
 
@@ -144,6 +160,8 @@ BEGIN
       o_a_b       => uv_o_a_b,
       o_yint_ho   => uv_o_yint_ho,
       y_int       => uv_y_int,
+      final_mod   => uv_final_mod,
+      background  => uv_background,
       obj_addr    => uv_obj_addr,
       obj_rdata   => uv_obj_rdata
       );
@@ -204,5 +222,31 @@ BEGIN
   END PROCESS;
 
   ext_rdata <= rdata_l;
+
+  ----------------------------------------------------------------------------
+  -- UV201 buffered-bus view.  RES2 and system RAM are the SAME arrays used
+  -- above; this is the architectural point of keeping buffered_bus as a
+  -- decoder/mux rather than giving it its own memories.
+  ----------------------------------------------------------------------------
+
+  u_buffered_bus : ENTITY work.buffered_bus
+    PORT MAP (
+      bb_addr     => bb_addr,
+      bb_rdata    => bb_rdata,
+      res2_sel    => bb_res2_sel,
+      res2_addr   => bb_res2_addr,
+      res2_rdata  => bb_res2_rdata,
+      ram_sel     => bb_ram_sel,
+      ram_addr    => bb_ram_addr,
+      ram_rdata   => bb_ram_rdata,
+      cart_sel    => bb_cart_sel,
+      cart_addr   => bb_cart_addr,
+      cart_rdata  => bb_cart_rdata,
+      open_bus    => bb_open_bus
+      );
+
+  bb_res2_rdata <= res2_rom(to_integer(bb_res2_addr));
+  bb_ram_rdata  <= sys_ram(to_integer(bb_ram_addr));
+  bb_cart_rdata <= (OTHERS => '1');  -- TODO: real cartridge slot
 
 END ARCHITECTURE rtl;

@@ -1,12 +1,16 @@
 # VideoBrain FPGA Core
 
-**Status as of this document:** UV202 arbitration layer + F8 bus interface +
-`sys_bus` (unified CPU-side memory map) + first `uv201/` module (register
-file) drafted. Syntax-checked with GHDL 4.1 against a hand-written stub
-`base_pack`/`f8_pack` (the real packages aren't in this file set) - this
-caught and fixed two real, tool-independent bugs, see "GHDL pass" below.
-**Still no simulation run against the real packages, no testbenches, no
-`uv202_top.vhd`, no `videobrain_top.vhd`.**
+**Status as of this document:** the repo now contains the current MiSTer
+`sys/` framework import alongside the VideoBrain-specific RTL.  The machine
+side has a UV202 structural top, CPU-side system bus, UV201 buffered-bus view,
+UV201 register file, Y-interrupt comparator, documented 10-entry FIFO, and
+F8 port-00/01 keyboard/sound/joystick I/O block.  The fetcher, renderer,
+cartridge slot, F3853/SMI, real CPU packages/core, and final `videobrain_top` /
+MiSTer `emu` wrapper are still intentionally unhooked.
+
+The earlier GHDL stub pass described below remains useful history, but the new
+modules in this architecture pass have **not** been syntax-checked here because
+GHDL is not available in the current environment.  No Quartus build was run.
 
 ## GHDL pass (new)
 
@@ -51,17 +55,17 @@ Two real, package-independent bugs were found and fixed while doing this:
 
 ## Project goal
 
-MiSTer FPGA core for the VideoBrain Family Computer. Reuses the existing F8
-CPU (`f8_cpu.vhd`) from the ChannelF_MiSTer core as-is. New work is the
-VideoBrain-specific chipset: UV202 (timing/bus arbiter) and UV201 (video
-renderer), plus the glue needed to connect the borrowed F8 core to a
-VideoBrain-shaped memory map instead of Channel F's.
+MiSTer FPGA core for the VideoBrain Family Computer. Reuse the existing F8
+CPU foundation from ChannelF_MiSTer with only the minimal VideoBrain-specific
+interrupt/bus integration required. New work is the VideoBrain chipset: UV202
+(timing/bus arbitration), UV201 (fetch/FIFO/render), the two memory views,
+F3853/SMI and machine I/O.
 
-**Strategy:** cycle-accurate where the source doc supports it, explicitly
-simplified (with non-blocking TODOs) where it doesn't yet. MVP path is:
-get register file + a MAME-style non-cycle-accurate renderer producing
-pixels first, then retrofit the real FIFO/fetcher/wait-state timing.
-UV201 (renderer) work has not started — everything so far is UV202-side.
+**Strategy:** cycle-accurate where the source documentation supports it, with
+explicitly marked MVP simplifications where it does not.  Keep the known
+hardware boundaries visible: CPU bus, buffered bus, UV202 arbitration, UV201
+fetcher/FIFO/renderer, and F3853 interrupt handling should remain separable so
+accuracy can be improved without rewriting the whole machine.
 
 ---
 
@@ -83,69 +87,55 @@ UV201 (renderer) work has not started — everything so far is UV202-side.
 
 ```
 rtl/
-├── sys_bus.vhd            -- NEW. Unified CPU-side memory map (RES1/RES2/
-│                              RAM/UV201-regs/cart-stub). See its own file.
+├── buffered_bus.vhd       -- NEW. UV201 8K DMA-view decoder/read mux; shares
+│                              RES2/RAM backing storage through sys_bus.
+├── sys_bus.vhd            -- UPDATED. CPU memory map + UV201 regs + shared
+│                              buffered-bus read path; cart still stubbed.
+├── videobrain_io.vhd      -- NEW. F8 ports 00/01 keyboard matrix, fire inputs,
+│                              2-bit sound latch/clock, accessory + joy enable.
 ├── uv202/
-│   ├── uv202_pack.vhd     -- UPDATED. Added ACC_RES2 + shared cpu_addr_fold().
-│   ├── uv202_clkgen.vhd   -- DONE. MCLK->BRCLK divide, CPU enable, brclk_phase.
-│   ├── uv202_timing.vhd   -- DONE except one flagged TODO (see below).
-│   ├── uv202_arbiter.vhd  -- MVP. Fixed-duration wait-stating, works structurally.
-│   └── f8_busif.vhd       -- UPDATED (bugfix, see GHDL pass). Still UNSIMULATED
-│                              against real packages. Highest-risk file so far.
+│   ├── uv202_pack.vhd     -- address/timing/register constants + bus types.
+│   ├── uv202_clkgen.vhd   -- MCLK/BRCLK/CPU enables.
+│   ├── uv202_timing.vhd   -- raster timing.
+│   ├── uv202_arbiter.vhd  -- MVP CPU/DMA wait-state arbitration.
+│   ├── uv202_top.vhd      -- NEW. Structural clkgen+timing+arbiter assembly.
+│   └── f8_busif.vhd       -- ROMC/address glue; still highest-risk path.
 └── uv201/
-    └── uv201_regs.vhd     -- NEW. Register file only (object RAM 0x00-0x8F +
-                               control/status 0xF0-0xFB). No fetcher/FIFO/
-                               renderer yet - see "Order of work" below.
+    ├── uv201_pack.vhd     -- NEW. FIFO entry type + UV201-local constants.
+    ├── uv201_regs.vhd     -- UPDATED. Register/object RAM; exposes BG/FMOD.
+    ├── uv201_yint.vhd     -- NEW. MVP scanline Y-interrupt comparator.
+    └── uv201_fifo.vhd     -- NEW. 10-entry FIFO + documented 10->8 hysteresis.
 ```
 
-No `uv202_top.vhd`. No `videobrain_top.vhd`. No testbenches have been
-written or run against the real packages — the GHDL pass above is a syntax
-check against a stub, not a functional simulation.
+The imported MiSTer template framework lives under `sys/`.  The stock template
+example RTL/PLL files are still present and are not yet wired to VideoBrain.
+There is still no root `VideoBrain.sv`/Quartus project shell and no
+`videobrain_top.vhd`.
 
 ---
 
-## Order of work (why sys_bus + uv201_regs, and not the fetcher/renderer, this session)
+## Order of work from here
 
-Before this session, every module that existed talked about bus accesses
-(`ext_req`/`cpu_grant`/`ACC_UV201_RD`/etc.) but nothing actually *was* a
-byte of RAM, ROM, or a UV201 register - so none of it was testable even in
-isolation beyond "does the FSM's state machine shape look right." That was
-the actual blocker, not lack of rendering: you can't write a meaningful
-`f8_busif` or `uv202_arbiter` testbench without something real on the other
-end of `ext_rdata`.
+The architecture is now far enough along that the next work should proceed in
+small dependency-ordered slices rather than adding more disconnected stubs:
 
-So the two things added this session were picked to unblock testing of
-everything already written, in this order:
-
-1. **`uv201_regs.vhd` first** - it has no dependency on anything not
-   already done (`uv202_pack` for register offsets/command bits), and
-   `sys_bus` needs it to exist before `sys_bus` can route UV201 accesses
-   anywhere real.
-2. **`sys_bus.vhd` second** - depends on `uv201_regs` (just built) and
-   `uv202_pack`'s address constants/`cpu_addr_fold` (already existed).
-   This is the piece that finally lets `f8_busif` + `uv202_arbiter` +
-   `uv201_regs` be wired into one thing and simulated end-to-end.
-
-Deliberately NOT done this session, and why, so the reasoning doesn't have
-to be re-derived later:
-
-- **`uv201_fetcher.vhd`/`uv201_render.vhd` (the actual pixel pipeline)** -
-  these need `uv201_regs`'s object RAM (done) AND `uv202_timing`'s
-  hpos/vpos/hblank taps (already existed) AND a buffered-bus memory view
-  that doesn't exist yet (`sys_bus` is CPU-side only, see its file header).
-  Building the fetcher before the buffered bus exists would mean building
-  it against a guessed interface and re-deriving it later. Next in line
-  once a buffered-bus view is sketched.
-- **`uv202_top.vhd`** - straightforward now that `sys_bus` exists (wire
-  clkgen + timing + arbiter + sys_bus + f8_busif together), but doing it
-  before a testbench exists to exercise it risks discovering interface
-  mistakes at integration time instead of unit time. The `tb_f8_busif`
-  plan from the prior session (see "Next step" below) is still the more
-  useful next action - it now has something real (`sys_bus`) to point its
-  mock/real `ext_rdata` at instead of only a canned pattern.
-- **F3853-equivalent SMI / interrupts** - blocked on the `f8_cpu.vhd`
-  interrupt-input gap (`f8_busif.vhd` gap #1, still open, unchanged this
-  session).
+1. **Fix and verify `f8_busif` handshaking.**  `ext_grant` is declared but is
+   not consumed anywhere in the current implementation, so the CPU wait-state
+   path must not yet be treated as functional.  Bring in the real Channel F
+   `base_pack`/`f8_pack`/`f8_cpu` sources and test the ROMC + grant sequencing.
+2. **Sketch/implement the UV201 fetcher against the now-stable boundaries:**
+   object-RAM read port -> buffered 13-bit bus -> UV202 UMIREQ/DMAREQ ->
+   `uv201_fifo_entry_t` writer.  Start with the simple documented path before
+   the 48-BRCLK breakover and collision refinements.
+3. **Add the renderer** as the FIFO consumer, with background/final-modifier,
+   X zoom and eventual Y zoom behavior kept outside the fetcher.
+4. **Move cartridge from stub to a real slot/backing module** shared by CPU and
+   buffered-bus views, then add MiSTer download plumbing for RES1/RES2/cart.
+5. **Add F3853/SMI + joystick monostable timing**, then patch the F8 interrupt
+   path minimally and explicitly.
+6. **Only then add `videobrain_top.vhd` and the root MiSTer `emu` wrapper.**
+   At that point the wrapper should be adaptation/plumbing, not where missing
+   machine behavior gets invented.
 
 ## Per-file state
 
