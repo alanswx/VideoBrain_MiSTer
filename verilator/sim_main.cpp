@@ -173,8 +173,8 @@ int main(int argc, char** argv, char** env) {
     bus.ioctl_din = &top->ioctl_din;
     input.ps2_key = &top->ps2_key;
 
-    top->pi_a_n = 0xff;   // keypad idle, active low
-    top->pi_b_n = 0xff;
+    top->kbd_matrix = 0;   // active high, nothing pressed
+    top->joy_fire = 0;
     top->reset = 1;
 
     input.Initialise();

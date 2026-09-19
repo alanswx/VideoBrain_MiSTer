@@ -29,11 +29,12 @@ ENTITY videobrain_io IS
     clk      : IN  std_logic;
     reset_na : IN  std_logic;
 
-    io_addr  : IN  uv8;
-    io_rd    : IN  std_logic;
-    io_wr    : IN  std_logic;
-    io_wdata : IN  uv8;
-    io_rdata : OUT uv8;
+    -- F8 ports 0 and 1 live inside the CPU, so this hangs off its port pins
+    -- rather than the external I/O bus. f8_cpu already inverts them, so these
+    -- are the active-low pin values.
+    port_a_n    : IN  uv8;   -- po_a_n: column latch, and sound data in bits 1:0
+    port_b_n    : IN  uv8;   -- po_b_n: sound clock, accessories, joystick enable
+    port_b_in_n : OUT uv8;   -- pi_b_n: keyboard rows and fire buttons
 
     -- Keyboard matrix, 9 columns x 4 rows, flattened by column:
     --   col0 = bits 3..0, col1 = bits 7..4, ... col8 = bits 35..32.
@@ -66,7 +67,8 @@ ARCHITECTURE rtl OF videobrain_io IS
 BEGIN
 
   PROCESS (clk, reset_na) IS
-    VARIABLE new_sound_clk : std_logic;
+    VARIABLE port_a_v : uv8;
+    VARIABLE port_b_v : uv8;
   BEGIN
     IF reset_na = '0' THEN
       key_latch_l    <= (OTHERS => '0');
@@ -80,31 +82,27 @@ BEGIN
     ELSIF rising_edge(clk) THEN
       audio_stb_l <= '0';
 
-      IF io_wr = '1' THEN
-        IF unsigned(io_addr) = to_unsigned(16#00#, 8) THEN
-          key_latch_l <= io_wdata;
+      port_a_v := NOT port_a_n;
+      port_b_v := NOT port_b_n;
 
-        ELSIF unsigned(io_addr) = to_unsigned(16#01#, 8) THEN
-          new_sound_clk := io_wdata(4);
+      key_latch_l <= port_a_v;
 
-          IF sound_clk_l = '0' AND new_sound_clk = '1' THEN
-            audio_code_l <= std_logic_vector(key_latch_l(1 DOWNTO 0));
-            audio_stb_l  <= '1';
-          END IF;
-
-          sound_clk_l    <= new_sound_clk;
-          accessory_p5_l <= io_wdata(5);
-          accessory_p1_l <= io_wdata(6);
-          joy_enable_l   <= NOT io_wdata(7);
-        END IF;
+      -- Rising edge of the sound clock latches the 2-bit DAC code.
+      IF sound_clk_l = '0' AND port_b_v(4) = '1' THEN
+        audio_code_l <= std_logic_vector(port_a_v(1 DOWNTO 0));
+        audio_stb_l  <= '1';
       END IF;
+
+      sound_clk_l    <= port_b_v(4);
+      accessory_p5_l <= port_b_v(5);
+      accessory_p1_l <= port_b_v(6);
+      joy_enable_l   <= NOT port_b_v(7);
     END IF;
   END PROCESS;
 
-  PROCESS (io_addr, io_rd, key_latch_l, kbd_matrix, joy_fire, uv_kbd) IS
+  PROCESS (key_latch_l, kbd_matrix, joy_fire, uv_kbd) IS
     VARIABLE rows : std_logic_vector(3 DOWNTO 0);
   BEGIN
-    io_rdata <= (OTHERS => '1');
     rows := joy_fire;
 
     FOR col IN 0 TO 7 LOOP
@@ -122,9 +120,7 @@ BEGIN
       END LOOP;
     END IF;
 
-    IF io_rd = '1' AND unsigned(io_addr) = to_unsigned(16#01#, 8) THEN
-      io_rdata <= unsigned("0000" & rows);
-    END IF;
+    port_b_in_n <= NOT unsigned("0000" & rows);
   END PROCESS;
 
   key_latch    <= key_latch_l;

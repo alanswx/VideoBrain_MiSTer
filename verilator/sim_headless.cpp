@@ -240,6 +240,29 @@ struct FrameGrabber {
 };
 
 // ---------------------------------------------------------------------------
+// Keyboard matrix. 9 columns x 4 rows, bit = col * 4 + row, active high.
+// Columns 0-7 are selected by the port-0 latch, column 8 by UV201 CMD_KBD.
+// Layout from MAME vidbrain.cpp INPUT_PORTS_START.
+// ---------------------------------------------------------------------------
+struct KeyName { const char* name; int bit; };
+static const KeyName KEYS[] = {
+    {"I",0},{"O",1},{"P",2},{"SEMI",3},
+    {"U",4},{"K",5},{"L",6},{"QUOTE",7},
+    {"Y",8},{"J",9},{"M",10},{"SHIFT",11},
+    {"T",12},{"H",13},{"N",14},{"ERASE",15},
+    {"R",16},{"G",17},{"B",18},{"SPACE",19},
+    {"E",20},{"F",21},{"V",22},{"SPECIAL",23},
+    {"W",24},{"D",25},{"C",26},{"NEXT",27},
+    {"Q",28},{"S",29},{"X",30},{"PREVIOUS",31},
+    {"A",32},{"Z",33},{"QUESTION",34},{"BACK",35},
+};
+
+static int key_bit(const std::string& n) {
+    for (const KeyName& k : KEYS) if (n == k.name) return k.bit;
+    return -1;
+}
+
+// ---------------------------------------------------------------------------
 // ioctl download driver (stands in for the HPS)
 // ---------------------------------------------------------------------------
 struct Download { std::string path; int index; };
@@ -396,6 +419,10 @@ static void usage(const char* argv0) {
 "\n"
 "  --trace-cpu N        log the first N CPU memory cycles (PC0, ROMC)\n"
 "  --trace-from F       only start the trace at frame F\n"
+"  --press KEY@F[:H]    hold KEY from frame F for H frames (default 8).\n"
+"                       RUN/STOP is SPACE. Letters are their own names;\n"
+"                       also SHIFT ERASE SPECIAL NEXT PREVIOUS BACK\n"
+"                       SEMI QUOTE QUESTION. Repeatable.\n"
 "  --frame-log          one line per frame with size and hash\n"
 "  --probe              per-frame UV201 fetcher/FIFO activity counters\n"
 "  --quiet              suppress progress output\n", argv0);
@@ -431,6 +458,8 @@ int main(int argc, char** argv) {
     bool shot_last = false, want_ppm = false, want_ascii = false;
     bool want_ram = false, frame_log = false, quiet = false, probe = false;
     std::set<long> shots, dumps;
+    struct Press { int bit; long from, to; };
+    std::vector<Press> presses;
 
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -458,6 +487,19 @@ int main(int argc, char** argv) {
         else if (a == "--dump-file")   dump_path = need("--dump-file");
         else if (a == "--trace-cpu")   trace_cpu = atol(need("--trace-cpu"));
         else if (a == "--trace-from")  trace_from = atol(need("--trace-from"));
+        else if (a == "--press") {
+            std::string v = need("--press");
+            size_t at = v.find('@');
+            if (at == std::string::npos) { fprintf(stderr, "error: --press needs KEY@FRAME\n"); return 1; }
+            std::string name = v.substr(0, at);
+            long from = atol(v.c_str() + at + 1);
+            long hold = 8;
+            size_t colon = v.find(':', at);
+            if (colon != std::string::npos) hold = atol(v.c_str() + colon + 1);
+            int bit = key_bit(name);
+            if (bit < 0) { fprintf(stderr, "error: unknown key '%s'\n", name.c_str()); return 1; }
+            presses.push_back({ bit, from, from + hold });
+        }
         else if (a == "--frame-log")   frame_log = true;
         else if (a == "--probe")       probe = true;
         else if (a == "--quiet")       quiet = true;
@@ -488,7 +530,8 @@ int main(int argc, char** argv) {
     top->ioctl_download = 0; top->ioctl_upload = 0; top->ioctl_wr = 0;
     top->ioctl_addr = 0; top->ioctl_dout = 0; top->ioctl_din = 0; top->ioctl_index = 0;
     top->ps2_key = 0;
-    top->pi_a_n = 0xff; top->pi_b_n = 0xff;   // keypad idle, active low
+    top->kbd_matrix = 0;   // active high, nothing pressed
+    top->joy_fire = 0;
     top->eval();
 
     long cycles = 0, last_reported = -1;
@@ -502,6 +545,13 @@ int main(int argc, char** argv) {
     long ext_int_n = 0, int_ack_n = 0, int_req_n = 0, io_wr_n = 0;
 
     while (fg.frame <= frames && cycles < max_cycles && !Verilated::gotFinish()) {
+
+        {
+            uint64_t m = 0;
+            for (const Press& pr : presses)
+                if (fg.frame >= pr.from && fg.frame < pr.to) m |= (uint64_t)1 << pr.bit;
+            top->kbd_matrix = m;
+        }
 
         io.tick();
         // Hold reset through the downloads, as the FPGA top does.

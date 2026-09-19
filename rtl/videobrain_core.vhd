@@ -21,8 +21,14 @@ ENTITY videobrain_core IS
     clk      : IN  std_logic;
     reset_na : IN  std_logic;
 
-    f8_pi_a_n : IN  uv8;
-    f8_pi_b_n : IN  uv8;
+    -- Keyboard matrix, 9 columns x 4 rows, flattened by column, active high.
+    kbd_matrix : IN std_logic_vector(35 DOWNTO 0);
+    joy_fire   : IN std_logic_vector(3 DOWNTO 0);
+
+    audio_code : OUT std_logic_vector(1 DOWNTO 0);
+    audio_stb  : OUT std_logic;
+    joy_enable : OUT std_logic;
+
     f8_po_a_n : OUT uv8;
     f8_po_b_n : OUT uv8;
 
@@ -100,6 +106,9 @@ ARCHITECTURE rtl OF videobrain_core IS
   SIGNAL fifo_wr_en : std_logic;
   SIGNAL fifo_wr_entry : uv201_fifo_entry_t;
 
+  SIGNAL po_a_n_l, po_b_n_l, pi_b_n_l : uv8;
+  SIGNAL uv_o_kbd_l : std_logic;
+
   SIGNAL io_addr  : uv8;
   SIGNAL io_rd    : std_logic;
   SIGNAL io_wr    : std_logic;
@@ -128,10 +137,10 @@ BEGIN
       romc     => romc,
       tick     => tick,
       phase    => phase,
-      po_a_n   => f8_po_a_n,
-      pi_a_n   => f8_pi_a_n,
-      po_b_n   => f8_po_b_n,
-      pi_b_n   => f8_pi_b_n,
+      po_a_n   => po_a_n_l,
+      pi_a_n   => x"FF",
+      po_b_n   => po_b_n_l,
+      pi_b_n   => pi_b_n_l,
       clk      => clk,
       ce       => cpu_ce,
       reset_na => reset_na,
@@ -261,7 +270,7 @@ BEGIN
       uv_o_frz       => uv_o_frz_l,
       uv_o_enb       => uv_o_enb,
       uv_o_int       => uv_o_int_l,
-      uv_o_kbd       => OPEN,
+      uv_o_kbd       => uv_o_kbd_l,
       uv_o_y_zm      => y_zoom,
       uv_o_a_b       => uv_o_a_b,
       uv_o_yint_ho   => uv_yint_ho_l,
@@ -275,6 +284,27 @@ BEGIN
       dl_wr          => dl_wr,
       dl_index       => dl_index
       );
+
+  u_io : ENTITY work.videobrain_io
+    PORT MAP (
+      clk          => clk,
+      reset_na     => reset_na,
+      port_a_n     => po_a_n_l,
+      port_b_n     => po_b_n_l,
+      port_b_in_n  => pi_b_n_l,
+      kbd_matrix   => kbd_matrix,
+      joy_fire     => joy_fire,
+      uv_kbd       => uv_o_kbd_l,
+      key_latch    => OPEN,
+      joy_enable   => joy_enable,
+      accessory_p5 => OPEN,
+      accessory_p1 => OPEN,
+      audio_code   => audio_code,
+      audio_stb    => audio_stb
+      );
+
+  f8_po_a_n <= po_a_n_l;
+  f8_po_b_n <= po_b_n_l;
 
   u_fetcher : ENTITY work.uv201_fetcher
     PORT MAP (

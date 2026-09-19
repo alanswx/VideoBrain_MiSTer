@@ -41,9 +41,9 @@ module top(
 
    input [10:0]  ps2_key,
 
-   // Keypad/joystick, wired to the F8 ports once videobrain_io is in the core.
-   input [7:0]   pi_a_n /*verilator public_flat*/,
-   input [7:0]   pi_b_n /*verilator public_flat*/
+   // Keyboard matrix, 9 columns x 4 rows flattened by column, active high.
+   input [35:0]  kbd_matrix /*verilator public_flat*/,
+   input [3:0]   joy_fire /*verilator public_flat*/
 );
 
    wire        brclk_ena /*verilator public_flat*/;
@@ -67,6 +67,9 @@ module top(
    wire [15:0] dc0 /*verilator public_flat*/;
    wire [7:0]  po_a_n /*verilator public_flat*/;
    wire [7:0]  po_b_n /*verilator public_flat*/;
+   wire [1:0]  audio_code /*verilator public_flat*/;
+   wire        audio_stb;
+   wire        joy_enable;
 
    wire        dl_wr = ioctl_download & ioctl_wr;
    wire        fifo_pop;
@@ -75,8 +78,11 @@ module top(
       .clk        (clk_sys),
       .reset_na   (~reset),
 
-      .f8_pi_a_n  (pi_a_n),
-      .f8_pi_b_n  (pi_b_n),
+      .kbd_matrix (kbd_matrix),
+      .joy_fire   (joy_fire),
+      .audio_code (audio_code),
+      .audio_stb  (audio_stb),
+      .joy_enable (joy_enable),
       .f8_po_a_n  (po_a_n),
       .f8_po_b_n  (po_b_n),
 
@@ -217,8 +223,9 @@ module top(
    assign VGA_HS = hs_r;
    assign VGA_VS = vs_r;
 
-   // TODO: videobrain_io is not in the core yet, so there is no sound source.
-   assign AUDIO_L = 16'd0;
-   assign AUDIO_R = 16'd0;
+   // 2-bit R-2R DAC on port 0 bits 1:0, clocked by port 1 bit 4.
+   wire signed [15:0] dac = {2'b00, audio_code, 12'b0} - 16'sd6000;
+   assign AUDIO_L = dac;
+   assign AUDIO_R = dac;
 
 endmodule
