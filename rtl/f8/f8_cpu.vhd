@@ -33,6 +33,11 @@ ENTITY f8_cpu IS
     clk      : IN std_logic;
     ce       : IN std_logic;
     reset_na : IN std_logic;
+
+    -- Interrupt request from the F3853.  Upstream Channel F has no interrupt
+    -- source, so this port and the OP_INTERRUPT dispatch below are a
+    -- VideoBrain addition; the microcode for it was already present.
+    intreq   : IN std_logic;
     acco     : OUT uv8;
     visaro   : OUT uv6;
     iozcso   : OUT uv5
@@ -40,6 +45,16 @@ ENTITY f8_cpu IS
 END ENTITY;
 
 ARCHITECTURE rtl OF f8_cpu IS
+
+  -- Interrupts are not taken after these opcodes: each one loads PC1, W or an
+  -- I/O port, and servicing before the following instruction would lose it.
+  -- Same list as MAME f8.cpp execute_run().
+  FUNCTION int_inhibited(op : uv8) RETURN boolean IS
+  BEGIN
+    RETURN op = x"0C" OR op = x"1B" OR op = x"1C" OR op = x"1D" OR
+           op = x"27" OR op = x"28" OR op = x"29" OR
+           (op >= x"B4" AND op <= x"BF");
+  END FUNCTION;
 
   SIGNAL phase_l : uint4;
 
@@ -209,9 +224,19 @@ BEGIN
           WHEN 7 =>
             IF len_v=S THEN
               IF mop.romc=ROMC_00 THEN -- IFETCH
-                opcode<=dr;
-                txt<=OPTXT(to_integer(dr));
-                madrs<=to_integer(dr)*8;
+                -- ICB set and a request pending: run the interrupt sequence
+                -- instead of dispatching the opcode just fetched.  That opcode
+                -- is discarded and re-fetched on return, which is why ROMC 0F
+                -- backs PC1 up by one.
+                IF intreq='1' AND iozcs(4)='1' AND NOT int_inhibited(opcode) THEN
+                  opcode<=OP_INTERRUPT;
+                  txt<=OPTXT(to_integer(OP_INTERRUPT));
+                  madrs<=to_integer(OP_INTERRUPT)*8;
+                ELSE
+                  opcode<=dr;
+                  txt<=OPTXT(to_integer(dr));
+                  madrs<=to_integer(dr)*8;
+                END IF;
               ELSE
                 madrs<=madrs+1;
               END IF;
@@ -220,9 +245,19 @@ BEGIN
           WHEN 11 =>
             IF len_v=L THEN
               IF mop.romc=ROMC_00 THEN -- IFETCH
-                opcode<=dr;
-                txt<=OPTXT(to_integer(dr));
-                madrs<=to_integer(dr)*8;
+                -- ICB set and a request pending: run the interrupt sequence
+                -- instead of dispatching the opcode just fetched.  That opcode
+                -- is discarded and re-fetched on return, which is why ROMC 0F
+                -- backs PC1 up by one.
+                IF intreq='1' AND iozcs(4)='1' AND NOT int_inhibited(opcode) THEN
+                  opcode<=OP_INTERRUPT;
+                  txt<=OPTXT(to_integer(OP_INTERRUPT));
+                  madrs<=to_integer(OP_INTERRUPT)*8;
+                ELSE
+                  opcode<=dr;
+                  txt<=OPTXT(to_integer(dr));
+                  madrs<=to_integer(dr)*8;
+                END IF;
               ELSE
                 madrs<=madrs+1;
               END IF;
@@ -233,6 +268,10 @@ BEGIN
 
         END CASE;
         
+        IF mop.romc=ROMC_13 AND phase_l=6 THEN
+          iozcs(4)<='0';
+        END IF;
+
         IF reset_na='0' THEN
           opcode<=OP_RESET;
           txt<=OPTXT(to_integer(OP_RESET));

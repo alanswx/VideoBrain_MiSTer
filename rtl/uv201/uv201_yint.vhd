@@ -53,7 +53,9 @@ BEGIN
     ELSIF rising_edge(clk) THEN
       irq_l <= '0';
 
-      IF brclk_ena = '1' AND hblank_falling = '1' THEN
+      -- hblank_falling is a one-clk pulse raised on the clk after the BRCLK
+      -- edge, so it must not be qualified with brclk_ena as well.
+      IF hblank_falling = '1' THEN
         target_y := unsigned(yint_ho & y_int);
 
         IF cmd_int = '1' AND cmd_frz = '0' AND cur_vpos = target_y THEN
