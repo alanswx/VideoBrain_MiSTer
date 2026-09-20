@@ -36,6 +36,7 @@ VHD_SRC = \
 	$(RTL)/uv201/uv201_fetcher.vhd \
 	$(RTL)/uv201/uv201_fifo.vhd \
 	$(RTL)/uv201/uv201_yint.vhd \
+	$(RTL)/uv201/uv201_render.vhd \
 	$(RTL)/f3853.vhd \
 	$(RTL)/buffered_bus.vhd \
 	$(RTL)/sys_bus.vhd \

@@ -573,7 +573,7 @@ int main(int argc, char** argv) {
 
         if (probe && CORE(brclk_ena)) {
             if (CORE(fifo_wr_en) && CORE(fifo_writable)) pushes++;
-            if (top->rootp->top__DOT__fifo_pop) pops++;
+            if (CORE(fifo_pop_l)) pops++;
             if (CORE(fetch_umireq)) umireq++;
             if (CORE(dmareq0)) dmagrant++;
             int lvl = top->rootp->top__DOT__fifo_level;

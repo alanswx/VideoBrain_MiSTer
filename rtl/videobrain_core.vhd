@@ -32,11 +32,20 @@ ENTITY videobrain_core IS
     f8_po_a_n : OUT uv8;
     f8_po_b_n : OUT uv8;
 
-    -- BRCLK phase enable.  An external renderer must present fifo_pop in this
-    -- phase: the FIFO only acts on pops while it is high.
     brclk_ena  : OUT std_logic;
 
-    fifo_pop   : IN  std_logic;
+    -- Pixel output from the internal renderer.
+    ce_pix : OUT std_logic;
+    vid_idx: OUT std_logic_vector(4 DOWNTO 0);
+    vid_r  : OUT uv8;
+    vid_g  : OUT uv8;
+    vid_b  : OUT uv8;
+    vid_de : OUT std_logic;
+    vid_hs : OUT std_logic;
+    vid_vs : OUT std_logic;
+    vid_hb : OUT std_logic;
+    vid_vb : OUT std_logic;
+
     fifo_valid : OUT std_logic;
     fifo_entry : OUT uv201_fifo_entry_t;
     fifo_level : OUT unsigned(3 DOWNTO 0);
@@ -109,6 +118,12 @@ ARCHITECTURE rtl OF videobrain_core IS
   SIGNAL po_a_n_l, po_b_n_l, pi_b_n_l : uv8;
   SIGNAL uv_o_kbd_l : std_logic;
   SIGNAL x_zoom_l, y_zoom_l : std_logic;
+  SIGNAL fifo_pop_l   : std_logic;
+  SIGNAL fifo_entry_l : uv201_fifo_entry_t;
+  SIGNAL fifo_valid_l : std_logic;
+  SIGNAL hblank_l, vblank_l : std_logic;
+  SIGNAL hpos_l : unsigned(7 DOWNTO 0);
+  SIGNAL final_mod_l, background_l : uv8;
 
   SIGNAL io_addr  : uv8;
   SIGNAL io_rd    : std_logic;
@@ -238,13 +253,13 @@ BEGIN
       brclk_phase    => OPEN,
       cpu_ena_raw    => OPEN,
       cpu_ce         => cpu_ce,
-      hblank         => hblank,
-      vblank         => vblank,
+      hblank         => hblank_l,
+      vblank         => vblank_l,
       burst          => burst,
       csync          => csync,
       scanline       => scanline,
       field          => field_l,
-      hpos           => hpos,
+      hpos           => hpos_l,
       vpos           => vpos_l,
       line_start     => line_start_l,
       hblank_falling => hblank_falling,
@@ -276,8 +291,8 @@ BEGIN
       uv_o_a_b       => uv_o_a_b,
       uv_o_yint_ho   => uv_yint_ho_l,
       uv_y_int       => uv_y_int_l,
-      uv_final_mod   => final_mod,
-      uv_background  => background,
+      uv_final_mod   => final_mod_l,
+      uv_background  => background_l,
       uv_obj_addr    => uv_obj_addr,
       uv_obj_rdata   => uv_obj_rdata,
       dl_addr        => dl_addr,
@@ -341,11 +356,47 @@ BEGIN
       wr_entry      => fifo_wr_entry,
       writable      => fifo_writable,
       full          => OPEN,
-      rd_pop        => fifo_pop,
-      rd_valid      => fifo_valid,
-      rd_entry      => fifo_entry,
+      rd_pop        => fifo_pop_l,
+      rd_valid      => fifo_valid_l,
+      rd_entry      => fifo_entry_l,
       level         => fifo_level
       );
+
+  u_render : ENTITY work.uv201_render
+    PORT MAP (
+      clk        => clk,
+      reset_na   => reset_na,
+      brclk_ena  => brclk_ena_l,
+      hblank     => hblank_l,
+      vblank     => vblank_l,
+      hpos       => hpos_l,
+      vpos       => vpos_l,
+      fifo_valid => fifo_valid_l,
+      fifo_entry => fifo_entry_l,
+      fifo_pop   => fifo_pop_l,
+      final_mod  => std_logic_vector(final_mod_l),
+      background => std_logic_vector(background_l),
+      x_zoom     => x_zoom_l,
+      video_en   => uv_o_enb,
+      ce_pix     => ce_pix,
+      idx        => vid_idx,
+      r          => vid_r,
+      g          => vid_g,
+      b          => vid_b,
+      de         => vid_de,
+      hs         => vid_hs,
+      vs         => vid_vs,
+      hb         => vid_hb,
+      vb         => vid_vb
+      );
+
+  hblank     <= hblank_l;
+  vblank     <= vblank_l;
+  hpos       <= hpos_l;
+  final_mod  <= final_mod_l;
+  background <= background_l;
+  fifo_valid <= fifo_valid_l;
+  fifo_entry <= fifo_entry_l;
 
   field    <= field_l;
   vpos     <= vpos_l;
