@@ -208,6 +208,29 @@ int main(int argc, char** argv, char** env) {
         video.StartFrame();
         input.Read();
 
+        // Host keys to the 9x4 VideoBrain matrix, bit = col * 4 + row.
+        // Layout from MAME vidbrain.cpp INPUT_PORTS_START.
+        {
+            static const struct { SDL_Scancode sc; int bit; } KEYMAP[] = {
+                {SDL_SCANCODE_I,0},{SDL_SCANCODE_O,1},{SDL_SCANCODE_P,2},{SDL_SCANCODE_SEMICOLON,3},
+                {SDL_SCANCODE_U,4},{SDL_SCANCODE_K,5},{SDL_SCANCODE_L,6},{SDL_SCANCODE_COMMA,7},
+                {SDL_SCANCODE_Y,8},{SDL_SCANCODE_J,9},{SDL_SCANCODE_M,10},{SDL_SCANCODE_RSHIFT,11},
+                {SDL_SCANCODE_LSHIFT,11},
+                {SDL_SCANCODE_T,12},{SDL_SCANCODE_H,13},{SDL_SCANCODE_N,14},{SDL_SCANCODE_BACKSPACE,15},
+                {SDL_SCANCODE_R,16},{SDL_SCANCODE_G,17},{SDL_SCANCODE_B,18},{SDL_SCANCODE_SPACE,19},
+                {SDL_SCANCODE_E,20},{SDL_SCANCODE_F,21},{SDL_SCANCODE_V,22},{SDL_SCANCODE_F4,23},
+                {SDL_SCANCODE_W,24},{SDL_SCANCODE_D,25},{SDL_SCANCODE_C,26},{SDL_SCANCODE_F3,27},
+                {SDL_SCANCODE_Q,28},{SDL_SCANCODE_S,29},{SDL_SCANCODE_X,30},{SDL_SCANCODE_F2,31},
+                {SDL_SCANCODE_A,32},{SDL_SCANCODE_Z,33},{SDL_SCANCODE_SLASH,34},{SDL_SCANCODE_F1,35},
+            };
+            uint64_t m = 0;
+            if (!ImGui::GetIO().WantCaptureKeyboard) {
+                const Uint8* ks = SDL_GetKeyboardState(NULL);
+                for (const auto& k : KEYMAP) if (ks[k.sc]) m |= (uint64_t)1 << k.bit;
+            }
+            top->kbd_matrix = m;
+        }
+
         ImGui::NewFrame();
 
         // ------------------------------------------------------------------
@@ -298,6 +321,19 @@ int main(int argc, char** argv, char** env) {
         ImGui::End();
 
         // ------------------------------------------------------------------
+        ImGui::Begin("Keyboard");
+        ImGui::TextUnformatted(
+            "Letters A-Z and , ; / type themselves.\n"
+            "Digits are SHIFTED letters, and SHIFT is a lock: tap it, do not hold.\n"
+            "  1=Z 2=X 3=C 4=S 5=D 6=F 7=W 8=E 9=R 0=/\n"
+            "SPACE = RUN/STOP      BACKSPACE = ERASE/RESTART\n"
+            "F1 = BACK/TEXT        F2 = PREVIOUS/COLOR\n"
+            "F3 = NEXT/CLOCK       F4 = SPECIAL/ALARM");
+        ImGui::Separator();
+        ImGui::Text("matrix %09llX  latch %02X",
+                    (unsigned long long)top->kbd_matrix, (unsigned)TOP(po_a_n) ^ 0xFF);
+        ImGui::End();
+
         ImGui::Begin(windowTitle_Trace);
         ImGui::Checkbox("Write VCD", &Trace);
         ImGui::InputText("File", Trace_File, IM_ARRAYSIZE(Trace_File));
