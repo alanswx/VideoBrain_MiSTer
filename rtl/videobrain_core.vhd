@@ -46,8 +46,9 @@ ENTITY videobrain_core IS
     vid_hb : OUT std_logic;
     vid_vb : OUT std_logic;
 
+    -- Debug only. The record itself stays internal: Quartus cannot carry a
+    -- VHDL record across the SystemVerilog boundary at the top level.
     fifo_valid : OUT std_logic;
-    fifo_entry : OUT uv201_fifo_entry_t;
     fifo_level : OUT unsigned(3 DOWNTO 0);
 
     hblank   : OUT std_logic;
@@ -396,7 +397,6 @@ BEGIN
   final_mod  <= final_mod_l;
   background <= background_l;
   fifo_valid <= fifo_valid_l;
-  fifo_entry <= fifo_entry_l;
 
   field    <= field_l;
   vpos     <= vpos_l;

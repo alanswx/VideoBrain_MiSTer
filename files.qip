@@ -1,0 +1,29 @@
+# VideoBrain core sources. VHDL-2008 throughout except the PLL and the top.
+set_global_assignment -name VHDL_FILE rtl/f8/base_pack.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/f8/f8_pack.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv201/uv201_pack.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv202/uv202_pack.vhd -hdl_version VHDL_2008
+
+set_global_assignment -name VHDL_FILE rtl/f8/f8_cpu.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv202/f8_busif.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv202/uv202_clkgen.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv202/uv202_timing.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv202/uv202_arbiter.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv202/uv202_top.vhd -hdl_version VHDL_2008
+
+set_global_assignment -name VHDL_FILE rtl/uv201/uv201_regs.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv201/uv201_fetcher.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv201/uv201_fifo.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv201/uv201_yint.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/uv201/uv201_render.vhd -hdl_version VHDL_2008
+
+set_global_assignment -name VHDL_FILE rtl/f3853.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/buffered_bus.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/sys_bus.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/videobrain_io.vhd -hdl_version VHDL_2008
+set_global_assignment -name VHDL_FILE rtl/videobrain_core.vhd -hdl_version VHDL_2008
+
+set_global_assignment -name QIP_FILE rtl/pll.qip
+
+set_global_assignment -name SDC_FILE VideoBrain.sdc
+set_global_assignment -name SYSTEMVERILOG_FILE VideoBrain.sv

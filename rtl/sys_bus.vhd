@@ -102,6 +102,11 @@ ARCHITECTURE rtl OF sys_bus IS
 
   SIGNAL dl_res1, dl_res2, dl_cart : std_logic;
 
+  -- Set when a cartridge download writes above 17FF. A 2K image never does,
+  -- and its upper half must mirror the lower rather than read as zero.
+  SIGNAL cart_big : std_logic := '0';
+  SIGNAL cart_a   : unsigned(11 DOWNTO 0);
+
 BEGIN
 
   a_eff <= cpu_addr_fold(ext_addr);
@@ -166,7 +171,7 @@ BEGIN
   -- read mux (combinational)
   ----------------------------------------------------------------------------
 
-  PROCESS (a_eff, res1_rom, res2_rom, cart_rom, sys_ram, uv_reg_rdata) IS
+  PROCESS (a_eff, cart_a, res1_rom, res2_rom, cart_rom, sys_ram, uv_reg_rdata) IS
   BEGIN
     IF a_eff <= to_unsigned(ADDR_RES1_HI, 14) THEN
       rdata_l <= res1_rom(to_integer(a_eff));
@@ -178,7 +183,7 @@ BEGIN
       rdata_l <= sys_ram(to_integer(a_eff - to_unsigned(ADDR_RAM_LO, 14)));
 
     ELSIF a_eff <= to_unsigned(ADDR_CART2_HI, 14) THEN
-      rdata_l <= cart_rom(to_integer(a_eff - to_unsigned(ADDR_CART2_LO, 14)));
+      rdata_l <= cart_rom(to_integer(cart_a));
 
     ELSIF a_eff <= to_unsigned(ADDR_RES2_HI, 14) THEN
       rdata_l <= res2_rom(to_integer(a_eff - to_unsigned(ADDR_RES2_LO, 14)));
@@ -224,6 +229,11 @@ BEGIN
     IF rising_edge(clk) THEN
       IF dl_cart = '1' THEN
         cart_rom(to_integer(dl_addr(11 DOWNTO 0))) <= dl_data;
+        IF dl_addr(11) = '1' THEN
+          cart_big <= '1';
+        ELSIF dl_addr = x"0000" THEN
+          cart_big <= '0';   -- start of a new image
+        END IF;
       END IF;
     END IF;
   END PROCESS;
@@ -252,6 +262,10 @@ BEGIN
 
   bb_res2_rdata <= res2_rom(to_integer(bb_res2_addr));
   bb_ram_rdata  <= sys_ram(to_integer(bb_ram_addr));
-  bb_cart_rdata <= cart_rom(to_integer(bb_cart_addr));
+  cart_a <= resize(a_eff - to_unsigned(ADDR_CART2_LO, 14), 12) AND
+            (cart_big & "11111111111");
+
+  bb_cart_rdata <= cart_rom(to_integer(bb_cart_addr AND
+                                       (cart_big & "11111111111")));
 
 END ARCHITECTURE rtl;

@@ -53,9 +53,6 @@ module top(
 
    wire        fifo_valid /*verilator public_flat*/;
    wire [3:0]  fifo_level /*verilator public_flat*/;
-   wire        ent_gap;
-   wire [7:0]  ent_payload;
-   wire [4:0]  ent_color;
 
    wire [7:0]  final_mod /*verilator public_flat*/;
    wire [7:0]  background /*verilator public_flat*/;
@@ -100,9 +97,6 @@ module top(
       .vid_hb     (vid_hb),
       .vid_vb     (vid_vb),
       .fifo_valid (fifo_valid),
-      .\fifo_entry_fifo_entry[is_gap]  (ent_gap),
-      .\fifo_entry_fifo_entry[payload] (ent_payload),
-      .\fifo_entry_fifo_entry[color]   (ent_color),
       .fifo_level (fifo_level),
 
       .hblank     (hblank),

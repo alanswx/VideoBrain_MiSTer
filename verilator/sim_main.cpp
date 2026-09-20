@@ -41,6 +41,7 @@ bool headless = false;
 #define UVR(sig)  (top->rootp->top__DOT__core__DOT__u_sys_bus__DOT__u_uv201_regs__DOT__##sig)
 #define FET(sig)  (top->rootp->top__DOT__core__DOT__u_fetcher__DOT__##sig)
 #define TOP(sig)  (top->rootp->top__DOT__##sig)
+#define REN(sig)  (top->rootp->top__DOT__core__DOT__u_render__DOT__##sig)
 
 // Simulation control
 int  batchSize = 200000;
@@ -295,12 +296,12 @@ int main(int argc, char** argv, char** env) {
                     (unsigned)FET(y_lo_l), (unsigned)FET(xy_hi_l), (unsigned)FET(dy_l),
                     (unsigned)FET(dx_l), (unsigned)FET(x_l), (unsigned)FET(ptr_l));
         ImGui::Text("FIFO level %d  valid %d  pop %d  umireq %d  dmareq %d",
-                    (int)TOP(fifo_level), (int)TOP(fifo_valid), (int)TOP(fifo_pop),
+                    (int)TOP(fifo_level), (int)TOP(fifo_valid), (int)CORE(fifo_pop_l),
                     (int)CORE(fetch_umireq), (int)CORE(dmareq0));
         ImGui::Separator();
         ImGui::Text("renderer: idx %02X  shift %d/%d  gap %d",
-                    (unsigned)TOP(idx_r), (int)TOP(shift_active),
-                    (int)TOP(shift_cnt), (int)TOP(gap_cnt));
+                    (unsigned)REN(idx_l), (int)REN(shift_active),
+                    (int)REN(shift_cnt), (int)REN(gap_cnt));
         ImGui::End();
 
         // ------------------------------------------------------------------
