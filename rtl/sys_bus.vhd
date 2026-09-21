@@ -58,7 +58,10 @@ ENTITY sys_bus IS
     dl_addr  : IN unsigned(15 DOWNTO 0);
     dl_data  : IN uv8;
     dl_wr    : IN std_logic;
-    dl_index : IN uv8
+    dl_index : IN uv8;
+
+    -- Cartridge mapper, see CART_* in uv202_pack.
+    cart_type : IN uv8
     );
 END ENTITY sys_bus;
 
@@ -77,6 +80,13 @@ ARCHITECTURE rtl OF sys_bus IS
   -- open bus; it addresses cart-supplied hardware, not this array.
   TYPE cart_t IS ARRAY (0 TO 4095) OF uv8;
   SIGNAL cart_rom : cart_t := (OTHERS => (OTHERS => '0'));
+
+  -- 1K of cartridge RAM: two 2114s on Timeshare and Money Minder alike.
+  TYPE cart_ram_t IS ARRAY (0 TO 1023) OF uv8;
+  SIGNAL cart_ram : cart_ram_t := (OTHERS => (OTHERS => '0'));
+  SIGNAL cart_ram_a  : unsigned(9 DOWNTO 0);
+  SIGNAL cart_ram_we : std_logic;
+  SIGNAL cart_ram_rd : std_logic;
 
   -- system RAM: 0C00-0FFF (1K)
   TYPE ram_t IS ARRAY (0 TO 1023) OF uv8;
@@ -101,6 +111,7 @@ ARCHITECTURE rtl OF sys_bus IS
   SIGNAL bb_open_bus   : std_logic;
 
   SIGNAL dl_res1, dl_res2, dl_cart : std_logic;
+  SIGNAL cs1, cs2, exp : std_logic;
 
   -- Set when a cartridge download writes above 17FF. A 2K image never does,
   -- and its upper half must mirror the lower rather than read as zero.
@@ -171,7 +182,8 @@ BEGIN
   -- read mux (combinational)
   ----------------------------------------------------------------------------
 
-  PROCESS (a_eff, cart_a, res1_rom, res2_rom, cart_rom, sys_ram, uv_reg_rdata) IS
+  PROCESS (a_eff, cart_a, cart_ram_rd, cart_ram_a, cart_ram, cs1, cart_type,
+           res1_rom, res2_rom, cart_rom, sys_ram, uv_reg_rdata) IS
   BEGIN
     IF a_eff <= to_unsigned(ADDR_RES1_HI, 14) THEN
       rdata_l <= res1_rom(to_integer(a_eff));
@@ -183,13 +195,26 @@ BEGIN
       rdata_l <= sys_ram(to_integer(a_eff - to_unsigned(ADDR_RAM_LO, 14)));
 
     ELSIF a_eff <= to_unsigned(ADDR_CART2_HI, 14) THEN
-      rdata_l <= cart_rom(to_integer(cart_a));
+      IF cart_ram_rd = '1' THEN
+        rdata_l <= cart_ram(to_integer(cart_ram_a));
+      ELSIF cs1 = '1' AND cart_type = CART_TIMESHARE THEN
+        rdata_l <= cart_rom(to_integer(a_eff(10 DOWNTO 0)));
+      ELSE
+        rdata_l <= cart_rom(to_integer(cart_a));
+      END IF;
 
     ELSIF a_eff <= to_unsigned(ADDR_RES2_HI, 14) THEN
       rdata_l <= res2_rom(to_integer(a_eff - to_unsigned(ADDR_RES2_LO, 14)));
 
+    ELSIF a_eff >= to_unsigned(ADDR_EXP_LO, 14) THEN
+      IF cart_ram_rd = '1' THEN
+        rdata_l <= cart_ram(to_integer(cart_ram_a));
+      ELSE
+        rdata_l <= (OTHERS => '1');  -- nothing drives the expansion window
+      END IF;
+
     ELSE
-      rdata_l <= (OTHERS => '1');  -- unreachable after mirror fold
+      rdata_l <= (OTHERS => '1');  -- 2800-2FFF folds; nothing else is mapped
     END IF;
   END PROCESS;
 
@@ -238,6 +263,17 @@ BEGIN
     END IF;
   END PROCESS;
 
+  cart_ram_we <= ext_wr AND cart_ram_rd;
+
+  PROCESS (clk) IS
+  BEGIN
+    IF rising_edge(clk) THEN
+      IF cart_ram_we = '1' THEN
+        cart_ram(to_integer(cart_ram_a)) <= ext_wdata;
+      END IF;
+    END IF;
+  END PROCESS;
+
   ----------------------------------------------------------------------------
   -- UV201 buffered-bus view.  RES2 and system RAM are the SAME arrays used
   -- above; this is the architectural point of keeping buffered_bus as a
@@ -262,8 +298,22 @@ BEGIN
 
   bb_res2_rdata <= res2_rom(to_integer(bb_res2_addr));
   bb_ram_rdata  <= sys_ram(to_integer(bb_ram_addr));
-  cart_a <= resize(a_eff - to_unsigned(ADDR_CART2_LO, 14), 12) AND
-            (cart_big & "11111111111");
+  -- /CS1 is 1000-17FF and /CS2 is 1800-1FFF; the expansion window at
+  -- 3000-3FFF has no chip select and only some mappers answer there.
+  cs1 <= to_std_logic(a_eff >= to_unsigned(16#1000#, 14) AND
+                      a_eff <= to_unsigned(16#17FF#, 14));
+  cs2 <= to_std_logic(a_eff >= to_unsigned(16#1800#, 14) AND
+                      a_eff <= to_unsigned(16#1FFF#, 14));
+  exp <= to_std_logic(a_eff >= to_unsigned(ADDR_EXP_LO, 14));
+
+  -- ROM address within the cartridge. A 2K image mirrors into the upper half.
+  cart_a <= resize(a_eff(11 DOWNTO 0), 12) AND (cart_big & "11111111111");
+
+  -- RAM lives on CS2 for Timeshare, and at 3800-3FFF for Money Minder. Both
+  -- have 1K, so both mirror within their window.
+  cart_ram_rd <= (cs2 AND to_std_logic(cart_type = CART_TIMESHARE)) OR
+                 (exp AND a_eff(11) AND to_std_logic(cart_type = CART_MONEYMINDER));
+  cart_ram_a  <= a_eff(9 DOWNTO 0);
 
   bb_cart_rdata <= cart_rom(to_integer(bb_cart_addr AND
                                        (cart_big & "11111111111")));

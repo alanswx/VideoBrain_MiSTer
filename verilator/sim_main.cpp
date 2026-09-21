@@ -130,6 +130,7 @@ static const char* opt_res2 =
     "../software/VideoBrain BIOS (1977)(VideoBrain Computer Company)(VideoBrain)(ROM)[7802G0-RESN2-KOREA].bin";
 static const char* opt_cart = nullptr;
 static bool        opt_run  = false;
+static int         opt_cart_type = 0;
 
 static void usage(const char* a0) {
     fprintf(stderr,
@@ -138,7 +139,8 @@ static void usage(const char* a0) {
 "  --res1 FILE   RES1 ROM (ioctl index 0)\n"
 "  --res2 FILE   RES2 ROM (ioctl index 1)\n"
 "  --cart FILE   cartridge image (ioctl index 2)\n"
-"  --run         start running immediately\n", a0);
+"  --run         start running immediately\n"
+"  --cart-type N 0 standard, 1 Timeshare, 2 Money Minder\n", a0);
 }
 
 int main(int argc, char** argv, char** env) {
@@ -154,6 +156,7 @@ int main(int argc, char** argv, char** env) {
         else if (a == "--res2") opt_res2 = need("--res2");
         else if (a == "--cart") opt_cart = need("--cart");
         else if (a == "--run")  opt_run = true;
+        else if (a == "--cart-type") opt_cart_type = atoi(need("--cart-type"));
         else { fprintf(stderr, "error: unknown option %s\n", a.c_str()); usage(argv[0]); return 1; }
     }
 
@@ -176,6 +179,7 @@ int main(int argc, char** argv, char** env) {
 
     top->kbd_matrix = 0;   // active high, nothing pressed
     top->joy_fire = 0;
+    top->cart_type = (uint8_t)opt_cart_type;
     top->reset = 1;
 
     input.Initialise();
@@ -253,6 +257,11 @@ int main(int argc, char** argv, char** env) {
         ImGui::SliderInt("Multi step", &multi_step_amount, 8, 65536);
         ImGui::Text("main_time %llu  frame %d  sim FPS %.1f",
                     (unsigned long long)main_time, video.count_frame, video.stats_fps);
+        {
+            static const char* types[] = { "Standard", "Timeshare", "Money Minder" };
+            if (ImGui::Combo("Cartridge type", &opt_cart_type, types, 3))
+                top->cart_type = (uint8_t)opt_cart_type;
+        }
         if (ImGui::Button("Load cartridge...")) {
             ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Cartridge",
                                                     ".bin,.*", "../software/");

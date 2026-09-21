@@ -399,6 +399,7 @@ static void usage(const char* argv0) {
 "  --res1 FILE          RES1 ROM, ioctl index 0\n"
 "  --res2 FILE          RES2 ROM, ioctl index 1\n"
 "  --cart FILE          cartridge image, ioctl index 2 (2K images are mirrored)\n"
+"  --cart-type N        0 standard, 1 Timeshare, 2 Money Minder\n"
 "\n"
 "  --frames N           stop after N video frames (default 300)\n"
 "  --max-cycles N       hard cycle cap (default 2000000000)\n"
@@ -454,7 +455,7 @@ int main(int argc, char** argv) {
     std::string cart, outdir = "out", prefix, dump_path;
     long frames = 300, max_cycles = 2000000000;
     long shot_every = 0, dump_every = 0, trace_cpu = 0, trace_from = 0;
-    int  scale = 3;
+    int  scale = 3, cart_type = 0;
     bool shot_last = false, want_ppm = false, want_ascii = false;
     bool want_ram = false, frame_log = false, quiet = false, probe = false;
     std::set<long> shots, dumps;
@@ -471,6 +472,7 @@ int main(int argc, char** argv) {
         else if (a == "--res1")        res1 = need("--res1");
         else if (a == "--res2")        res2 = need("--res2");
         else if (a == "--cart")        cart = need("--cart");
+        else if (a == "--cart-type")   cart_type = atoi(need("--cart-type"));
         else if (a == "--frames")      frames = atol(need("--frames"));
         else if (a == "--max-cycles")  max_cycles = atol(need("--max-cycles"));
         else if (a == "--shot")        parse_list(need("--shot"), shots);
@@ -532,6 +534,7 @@ int main(int argc, char** argv) {
     top->ps2_key = 0;
     top->kbd_matrix = 0;   // active high, nothing pressed
     top->joy_fire = 0;
+    top->cart_type = (uint8_t)cart_type;
     top->eval();
 
     long cycles = 0, last_reported = -1;

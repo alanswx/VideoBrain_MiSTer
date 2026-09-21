@@ -43,7 +43,8 @@ module top(
 
    // Keyboard matrix, 9 columns x 4 rows flattened by column, active high.
    input [35:0]  kbd_matrix /*verilator public_flat*/,
-   input [3:0]   joy_fire /*verilator public_flat*/
+   input [3:0]   joy_fire /*verilator public_flat*/,
+   input [7:0]   cart_type /*verilator public_flat*/
 );
 
    wire        brclk_ena /*verilator public_flat*/;
@@ -118,6 +119,7 @@ module top(
       .dl_data    (ioctl_dout),
       .dl_wr      (dl_wr),
       .dl_index   (ioctl_index),
+      .cart_type  (cart_type),
 
       .pc0        (pc0),
       .pc1        (pc1),

@@ -58,6 +58,7 @@ localparam CONF_STR = {
 	"O[4:3],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"-;",
 	"O[5],Joystick,Off,On;",
+	"O[7:6],Cartridge,Standard,Timeshare,Money Minder;",
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
@@ -253,6 +254,7 @@ videobrain_core core
 	.dl_data    (ioctl_dout),
 	.dl_wr      (dl_wr),
 	.dl_index   (dl_index),
+	.cart_type  ({6'd0, status[7:6]}),
 
 	.pc0        (),
 	.pc1        (),
@@ -296,8 +298,16 @@ video_mixer #(.GAMMA(0)) video_mixer
 
 ///////////////////////   AUDIO   ////////////////////////////////
 
-// Two-bit R-2R ladder on port 0 bits 1:0, clocked by port 1 bit 4.
-wire [15:0] dac = {2'b00, audio_code, 12'd0};
+// Two-bit R-2R ladder on port 0 bits 1:0, clocked by port 1 bit 4 (120k and
+// 56k on the board). Centred in the unsigned range, then a single-pole low
+// pass near 9kHz so the square edges do not alias in the 48kHz path.
+wire [15:0] dac_level = 16'h5000 + {audio_code, 13'd0};
+
+reg  signed [24:0] dac_filt = 25'sh0800000;
+wire signed [24:0] dac_in   = {1'b0, dac_level, 8'd0};
+always @(posedge clk_sys) dac_filt <= dac_filt + ((dac_in - dac_filt) >>> 8);
+
+wire [15:0] dac = dac_filt[23:8];
 assign AUDIO_L = dac;
 assign AUDIO_R = dac;
 
