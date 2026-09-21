@@ -101,31 +101,54 @@ in that archive are the only measurements of real silicon and outrank both
 the patents and MAME where they disagree - height is six bits with 0
 meaning 64 and bits 6/7 ignored, and width 0 means 32 bytes.
 
-## Deliberately incomplete
+## Not yet done
 
-- RES1/RES2 ROM contents and cartridge loading/mapper behavior.
-- Final UV201 renderer and pixel/color path.
-- Exact UV201 fetch cadence, FIFO spill behavior, Y zoom, and hardware mutation/writeback of RP/DY state.
-- F3853/SMI interrupt path, including UV201 Y interrupt and external interrupt capture.
-- Final VideoBrain port-I/O integration.
-- Exact equalization/vsync half-line seam validation.
-- MiSTer framework integration and RBF build.
+Blocking a hardware test:
+
+- The design has never been through Quartus. Unknown: whether it accepts the
+  VHDL-2008 as GHDL does, whether the 14.318181 MHz domain closes timing, and
+  whether the PLL lands exactly (M=63/N=2/C=110 is reachable from 50 MHz, but
+  Quartus picks the counters).
+
+Modelled wrongly or not at all, in rough order of how likely software is to
+notice:
+
+- Hardware increments each segment's pointer and decrements its height as it
+  draws, so the CPU must rewrite them every frame. The RTL keeps them static.
+  The BIOS rewrites them anyway, so nothing has broken yet.
+- Bitmap DMA is one byte per request. Hardware fetches in two-byte chunks as
+  soon as the FIFO has slots.
+- The FIFO's 10-to-8 spill hysteresis has never been checked against hardware.
+- xcopy's interaction with X and Y zoom is not implemented.
+- `f8_busif` latches `ext_rdata` at phase 2 regardless of `ext_grant`, which is
+  only safe for the zero-wait RES1 path.
+- The F3853 timer is clocked from BRCLK; hardware clocks the SMI at 2 MHz.
+  Only the external interrupt has been exercised.
+- The equalization and vsync half-line seam is a whole-line approximation.
+
+Missing subsystems:
+
+- Analogue paddles. An NE555 retriggered at HBLANK pulses EXT INT and the pot
+  position is read back out of the freeze registers, which needs CMD_FRZ.
+- Audio is the raw 2-bit DAC code with no filtering, and `audio_stb` is unused.
+- Cartridge mappers: Timeshare has 1K RAM at 1800-1BFF, Money Minder 2K at
+  3800-3FFF. Only plain ROM carts work.
+- The 3000-3FFF expansion window.
+
+Known bugs:
+
+- Pinball will not accept a typed game number, though Tennis takes RUN/STOP.
+  CMD_KBD is clear, so column 8 is being scanned; the cause is elsewhere.
+- A stray object renders at the bottom right of the BIOS and Gladiator screens.
 
 ## Next validation order
 
-1. Bitmap DMA is one byte per request; hardware fetches in two-byte chunks
-   as soon as the FIFO has slots. Affects cadence, not correctness.
-   The fetcher also does not implement xcopy's interaction with zoom, and
-   the hardware's mutation of segment pointers and heights as it draws is
-   not modelled at all.
-2. Add focused simulation for `f8_busif`: ROMC 00/01/02/03/05/0C/0E/11 with
-   delayed grants. Reads latch `ext_rdata` at phase 2 regardless of
-   `ext_grant`, which is only safe for the zero-wait RES1 path.
-3. Convert the VHDL to Verilog a file at a time, checking each against the
-   frame hashes of selftest.rom, selftest_int.rom and the booting titles.
-4. The F3853 timer runs off BRCLK; real hardware clocks the SMI at 2MHz.
-   Only the external interrupt is exercised so far.
-5. MiSTer wrapper, audio output and joystick analogue axes.
-4. Define UV201 RP/DY writeback semantics and exact fetch cadence before adding the renderer.
-5. Add ROM/cartridge storage and VideoBrain I/O/F3853 paths.
-6. Integrate the MiSTer wrapper only after the machine-level interfaces are stable.
+1. Build in Quartus and fix whatever it rejects. Nothing else can be trusted
+   on hardware until this happens.
+2. Segment pointer and height writeback, and two-byte DMA chunks. Both are in
+   uv201_fetcher and both are documented in the group archive.
+3. Chase the Pinball digit entry and the stray bottom-right object.
+4. Convert the VHDL to Verilog a file at a time, leaves first and the CPU
+   last, checking each against the frame hashes of selftest.rom,
+   selftest_int.rom and the booting titles.
+5. Paddles, audio filtering, cartridge mappers.
