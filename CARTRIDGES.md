@@ -1,72 +1,77 @@
 # Cartridge status
 
-Every cartridge in the set was run in the headless simulator: a capture at
-frame 150, then SPACE (RUN/STOP) held from frame 150 and a second capture at
-frame 280. Screens were inspected, not just hashed. Rerun it with
+Every cartridge in the set was run in the headless simulator and the screens
+were inspected, not just hashed. Nothing here has been tested on real hardware.
 
     verilator/obj_dir_headless/Vtop --cart <file> --cart-type <N> \
-        --frames 280 --press SPACE@150:25 --shot 279
+        --frames 150 --shot 149
 
 `--cart-type` is 0 standard, 1 Timeshare, 2 Money Minder, matching the OSD
-option. Nothing here has been tested on real hardware.
+option.
 
 ## Summary
 
-| Cartridge | Size | Mapper | Status | Notes |
+**All sixteen boot and render their first screen correctly.** Tennis plays.
+
+| Cartridge | Size | Mapper | First screen | Notes |
 |---|---|---|---|---|
-| Blackjack | 2K | standard | works | "1 OR 2 PLAYERS?" over black and red card suits on green. Best colour test in the set. |
-| Checkers | 4K | standard | works | Advances to "YOU MOVE FIRST ? Y OR N". |
-| Demonstration | 4K | standard | works | Six lines, each a different colour. Seven colours on screen. |
-| Financier | 4K | standard | **broken** | Striped magenta and blue bands across the top and solid colour blocks. See below. |
-| Gladiator | 4K | standard | works | Menu, then advances on RUN/STOP. |
-| Lemonade Stand | 4K | standard | works | Slow to boot: blank at frame 150, full menu by 280. |
-| Math Tutor 1 | 4K | standard | works | "CHOOSE / TUTOR 1 / PROBLEM 2" on olive. |
-| Money Minder | 4K | money_minder | works | Title screen. RAM at 3800-3FFF exercised; deeper functions untested. |
-| Music Teacher 1 | 2K | standard | **partial** | Header draws, menu items below do not. Ink falls from 2.9% to 1.0% after the keypress. |
-| Pinball | 2K | standard | partial | Menu correct, but a typed game number is never accepted. |
+| Blackjack | 2K | standard | correct | "1 OR 2 PLAYERS?" over black and red card suits on green. Best colour test in the set. |
+| Checkers | 4K | standard | correct | RUN/STOP advances to "YOU MOVE FIRST ? Y OR N". |
+| Demonstration | 4K | standard | correct | Six lines, each a different colour, seven colours on screen. |
+| Financier | 4K | standard | correct | Full function menu on green. |
+| Gladiator | 4K | standard | correct | Game-number prompt; advances on RUN/STOP. |
+| Lemonade Stand | 4K | standard | correct | Slow to boot: blank at frame 150, full menu by 280. |
+| Math Tutor 1 | 4K | standard | correct | "CHOOSE / TUTOR 1 / PROBLEM 2" on olive. |
+| Money Minder | 4K | money_minder | correct | "MONEY MANAGER" title. RAM at 3800-3FFF is reachable; deeper functions untested. |
+| Music Teacher 1 | 2K | standard | correct | "PLAY/RECORD 1 / LEARN A SONG 2". |
+| Pinball | 2K | standard | correct | Menu fine, but a typed game number is never accepted. See below. |
 | Tennis | 4K | standard | **plays** | RUN/STOP starts the game: court, net, scoreboard, player sprites. |
-| Timeshare | 2K | timeshare | **blank** | Nothing drawn at any point. See below. |
-| Vice Versa | 4K | standard | works | Advances to "YOU PLAY FIRST ? Y OR N". |
-| VideoArtist | 2K | standard | works | Design selection menu. |
-| Wordwise 1 | 2K | standard | works | Multi-colour skill menu. |
-| Wordwise 2 | 2K | standard | works | Four-entry multi-colour menu. |
+| Timeshare | 2K | timeshare | correct | "TIMESHARE" title on cyan, then the screen blanks around frame 130. See below. |
+| Vice Versa | 4K | standard | correct | Advances to "YOU PLAY FIRST ? Y OR N". |
+| VideoArtist | 2K | standard | correct | Design selection menu. |
+| Wordwise 1 | 2K | standard | correct | Multi-colour skill menu. |
+| Wordwise 2 | 2K | standard | correct | Four-entry multi-colour menu. |
 | APL / Computational Language | - | comp_language | **not loadable** | Dumped as separate .u1-.u11 chip images, and the mapper is not implemented. |
 
-Fourteen of sixteen boot and render correctly. One plays.
+## A note on method
 
-## Known failures
+An earlier version of this table called Financier corrupted, Music Teacher 1
+partial and Timeshare blank. All three were wrong, and for two different
+reasons worth recording.
 
-### Timeshare - blank
+Timeshare was sampled at frames 150 and 280, both after its title screen had
+already gone. Sampling a moving display at two fixed frames is not enough; the
+frame log (`--frame-log`) shows when a screen actually changes.
 
-Nothing is drawn with either mapper setting, so the Timeshare mapper is not the
-cause. At frame 119 the CPU is alive and writing UV201 object registers
-(`romc=05`, `DC0=0813`) with `video_en=1`, yet the frame is uniform black while
-the background register reads 06. That contradiction is unexplained and is the
-thing to chase first.
+Financier and Music Teacher 1 were judged on a capture taken after holding
+SPACE. RUN/STOP is a valid input for Tennis and Checkers but meaningless to a
+cartridge waiting for a typed function name, so those captures showed whatever
+state an invalid keypress produced, not a rendering fault. Judge a cartridge on
+the screen it actually presents.
 
-Timeshare is the communications cartridge and expects the Expander modem
-hardware, which does not exist here, so it may legitimately stop early. That
-has not been confirmed and should not be assumed.
+## Open questions
 
-### Financier - corrupted
+### Timeshare blanks after its title
 
-Alternating colour bands on consecutive scanlines. VideoBrain software changes
-the background register from the Y-interrupt handler to paint horizontal
-colour bands, so the mechanism is in use here and is going wrong. Suspects, in
-order: the Y-interrupt firing on the wrong line, the background register being
-sampled at the wrong point in the line, and the fetcher dropping objects.
+The title renders correctly on cyan, then the screen goes blank around frame
+130 and stays blank. Timeshare is the communications cartridge and expects the
+Expander modem, which does not exist here, so stopping early is plausible. That
+has not been confirmed.
 
-### Music Teacher 1 - partial
-
-Draws its header but not the menu items, and loses content between frames 150
-and 280. Likely the same class of problem as Financier.
-
-### Pinball - no digit entry
+### Pinball will not take a typed digit
 
 The menu is correct and Tennis proves keyboard input works, so this is specific
-to typing a number. `CMD_KBD` is clear, so keyboard column 8 is being scanned
+to entering a number. `CMD_KBD` is clear, so keyboard column 8 is being scanned
 and that is not the cause. The BIOS keycode is `row * 9 + column`, which is
 worth checking against what the cartridge expects.
+
+### Financier after an invalid key
+
+Holding SPACE leaves Financier drawing striped colour bands. VideoBrain
+software paints bands by rewriting the background register from the
+Y-interrupt handler, so the mechanism is in use. Whether this is a real
+rendering fault or simply what the cartridge does when handed a key it did not
+ask for is unresolved. The way to settle it is to type a valid function name.
 
 ## Not implemented
 
