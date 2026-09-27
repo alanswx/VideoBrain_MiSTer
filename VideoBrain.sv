@@ -206,34 +206,28 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// VideoBrain joystick pots are 0..99 kOhm equivalents. MiSTer reports
-// signed -127..127 analog axes in each byte; preserve center as a real,
-// symmetric neutral value and suppress only the small electrical deadband.
-function automatic [7:0] axis_to_pot(input [7:0] raw_axis);
-	reg signed [7:0] axis;
-	reg signed [15:0] scaled;
-	reg signed [15:0] pot;
-	begin
-		axis = raw_axis;
-		if (axis >= -8'sd8 && axis <= 8'sd8) axis_to_pot = 8'd50;
-		else begin
-			scaled = (($signed(axis) <<< 4) + ($signed(axis) <<< 3) + $signed(axis)) >>> 6;
-			pot = 16'sd50 + scaled;
-			axis_to_pot = pot[7:0];
-		end
-	end
+// MiSTer analog axes are signed -127..127; pots take 0..255, 128 = centre.
+function automatic [7:0] axis_to_pot(input [7:0] axis);
+	axis_to_pot = ($signed(axis) >= -8'sd8 && $signed(axis) <= 8'sd8) ? 8'd128 : axis ^ 8'h80;
 endfunction
 
-localparam [7:0] JOY_MID = 8'd50;
-wire [7:0] joy1_x = !status[5] ? JOY_MID : ((joystick_0[2] == joystick_0[3]) ? axis_to_pot(joystick_l_analog_0[7:0]) : (joystick_0[2] ? 8'd0 : 8'd99));
-wire [7:0] joy1_y = !status[5] ? JOY_MID : ((joystick_0[0] == joystick_0[1]) ? axis_to_pot(joystick_l_analog_0[15:8]) : (joystick_0[0] ? 8'd0 : 8'd99));
-wire [7:0] joy2_x = !status[5] ? JOY_MID : ((joystick_1[2] == joystick_1[3]) ? axis_to_pot(joystick_l_analog_1[7:0]) : (joystick_1[2] ? 8'd0 : 8'd99));
-wire [7:0] joy2_y = !status[5] ? JOY_MID : ((joystick_1[0] == joystick_1[1]) ? axis_to_pot(joystick_l_analog_1[15:8]) : (joystick_1[0] ? 8'd0 : 8'd99));
-wire [7:0] joy3_x = !status[5] ? JOY_MID : ((joystick_2[2] == joystick_2[3]) ? axis_to_pot(joystick_l_analog_2[7:0]) : (joystick_2[2] ? 8'd0 : 8'd99));
-wire [7:0] joy3_y = !status[5] ? JOY_MID : ((joystick_2[0] == joystick_2[1]) ? axis_to_pot(joystick_l_analog_2[15:8]) : (joystick_2[0] ? 8'd0 : 8'd99));
-wire [7:0] joy4_x = !status[5] ? JOY_MID : ((joystick_3[2] == joystick_3[3]) ? axis_to_pot(joystick_l_analog_3[7:0]) : (joystick_3[2] ? 8'd0 : 8'd99));
-wire [7:0] joy4_y = !status[5] ? JOY_MID : ((joystick_3[0] == joystick_3[1]) ? axis_to_pot(joystick_l_analog_3[15:8]) : (joystick_3[0] ? 8'd0 : 8'd99));
-wire [63:0] joy_pots = {joy4_y, joy4_x, joy3_y, joy3_x, joy2_y, joy2_x, joy1_y, joy1_x};
+// Digital overrides analog; up/left = 0, down/right = 255.
+function automatic [7:0] stick_pot(input neg, input pos, input [7:0] axis);
+	stick_pot = (neg == pos) ? axis_to_pot(axis) : (neg ? 8'd0 : 8'd255);
+endfunction
+
+// Latch bit 2n selects stick n's vertical pot, 2n+1 its horizontal
+// (Tennis source: LDVJ = $01, left vertical joystick).
+wire [7:0] joy1_v = stick_pot(joystick_0[3], joystick_0[2], joystick_l_analog_0[15:8]);
+wire [7:0] joy1_h = stick_pot(joystick_0[1], joystick_0[0], joystick_l_analog_0[7:0]);
+wire [7:0] joy2_v = stick_pot(joystick_1[3], joystick_1[2], joystick_l_analog_1[15:8]);
+wire [7:0] joy2_h = stick_pot(joystick_1[1], joystick_1[0], joystick_l_analog_1[7:0]);
+wire [7:0] joy3_v = stick_pot(joystick_2[3], joystick_2[2], joystick_l_analog_2[15:8]);
+wire [7:0] joy3_h = stick_pot(joystick_2[1], joystick_2[0], joystick_l_analog_2[7:0]);
+wire [7:0] joy4_v = stick_pot(joystick_3[3], joystick_3[2], joystick_l_analog_3[15:8]);
+wire [7:0] joy4_h = stick_pot(joystick_3[1], joystick_3[0], joystick_l_analog_3[7:0]);
+wire [63:0] joy_pots = status[5] ? {joy4_h, joy4_v, joy3_h, joy3_v, joy2_h, joy2_v, joy1_h, joy1_v}
+                                 : {8{8'd128}};
 
 // Fire buttons share the row lines with the keyboard.
 wire [3:0] joy_fire = status[5] ? {joystick_3[4], joystick_2[4], joystick_1[4], joystick_0[4]} : 4'b0000;

@@ -179,7 +179,7 @@ int main(int argc, char** argv, char** env) {
 
     top->kbd_matrix = 0;   // active high, nothing pressed
     top->joy_fire = 0;
-    top->joy_pots = 0x4632323232323232ULL;
+    top->joy_pots = 0x8080808080808080ULL;
     top->cart_type = (uint8_t)opt_cart_type;
     top->reset = 1;
 
@@ -223,6 +223,7 @@ int main(int argc, char** argv, char** env) {
                 {SDL_SCANCODE_Y,8},{SDL_SCANCODE_J,9},{SDL_SCANCODE_M,10},{SDL_SCANCODE_RSHIFT,11},
                 {SDL_SCANCODE_LSHIFT,11},
                 {SDL_SCANCODE_T,12},{SDL_SCANCODE_H,13},{SDL_SCANCODE_N,14},{SDL_SCANCODE_BACKSPACE,15},
+                {SDL_SCANCODE_F5,15},
                 {SDL_SCANCODE_R,16},{SDL_SCANCODE_G,17},{SDL_SCANCODE_B,18},{SDL_SCANCODE_SPACE,19},
                 {SDL_SCANCODE_E,20},{SDL_SCANCODE_F,21},{SDL_SCANCODE_V,22},{SDL_SCANCODE_F4,23},
                 {SDL_SCANCODE_W,24},{SDL_SCANCODE_D,25},{SDL_SCANCODE_C,26},{SDL_SCANCODE_F3,27},
@@ -235,6 +236,19 @@ int main(int argc, char** argv, char** env) {
                 for (const auto& k : KEYMAP) if (ks[k.sc]) m |= (uint64_t)1 << k.bit;
             }
             top->kbd_matrix = m;
+        }
+
+        // Arrows drive stick 1 (pot byte 0 vertical, 1 horizontal), LCTRL fires.
+        {
+            uint8_t v = 128, h = 128, fire = 0;
+            if (!ImGui::GetIO().WantCaptureKeyboard) {
+                const Uint8* ks = SDL_GetKeyboardState(NULL);
+                if (ks[SDL_SCANCODE_UP] != ks[SDL_SCANCODE_DOWN])    v = ks[SDL_SCANCODE_UP] ? 0 : 255;
+                if (ks[SDL_SCANCODE_LEFT] != ks[SDL_SCANCODE_RIGHT]) h = ks[SDL_SCANCODE_LEFT] ? 0 : 255;
+                fire = ks[SDL_SCANCODE_LCTRL] ? 1 : 0;
+            }
+            top->joy_pots = 0x8080808080800000ULL | (uint64_t(h) << 8) | v;
+            top->joy_fire = fire;
         }
 
         ImGui::NewFrame();
@@ -339,7 +353,8 @@ int main(int argc, char** argv, char** env) {
             "  1=Z 2=X 3=C 4=S 5=D 6=F 7=W 8=E 9=R 0=/\n"
             "SPACE = RUN/STOP      F1 = BACK/TEXT\n"
             "F2 = PREVIOUS/COLOR   F3 = NEXT/CLOCK\n"
-            "F4 = SPECIAL/ALARM    F5 = ERASE/RESTART");
+            "F4 = SPECIAL/ALARM    F5 = ERASE/RESTART\n"
+            "Arrows = joystick 1   LCTRL = fire 1");
         ImGui::Separator();
         ImGui::Text("matrix %09llX  latch %02X",
                     (unsigned long long)top->kbd_matrix, (unsigned)TOP(po_a_n) ^ 0xFF);

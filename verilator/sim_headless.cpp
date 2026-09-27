@@ -559,7 +559,7 @@ int main(int argc, char** argv) {
     top->ps2_key = 0;
     top->kbd_matrix = 0;   // active high, nothing pressed
     top->joy_fire = 0;
-    top->joy_pots = 0x4632323232323232ULL;
+    top->joy_pots = 0x8080808080808080ULL;
     top->cart_type = (uint8_t)cart_type;
     top->eval();
 
@@ -594,9 +594,9 @@ int main(int argc, char** argv) {
                 if (pr.direction == "RIGHT") right = true;
                 if (pr.direction == "FIRE") fire = true;
             }
-            uint8_t x = left == right ? 50 : (right ? 99 : 0);
-            uint8_t y = up == down ? 50 : (down ? 99 : 0);
-            top->joy_pots = 0x4632323232320000ULL | (uint64_t(y) << 8) | x;
+            uint8_t x = left == right ? 128 : (right ? 255 : 0);
+            uint8_t y = up == down ? 128 : (down ? 255 : 0);
+            top->joy_pots = 0x8080808080800000ULL | (uint64_t(x) << 8) | y;  // byte 0 vertical
             top->joy_fire = fire ? 1 : 0;
         }
 
@@ -622,11 +622,11 @@ int main(int argc, char** argv) {
             last_joy_enable = CORE(joy_enable_l);
             last_joy_latch = CORE(key_latch_l);
             printf("[joy-control] cycle=%llu frame=%ld pc=%04X enable=%d latch=%02X "
-                   "h=%d v=%d active=%d timer=%d\n",
+                   "h=%d v=%d out=%d timer=%d\n",
                    (unsigned long long)cycles, fg.frame,
                    (unsigned)top->rootp->top__DOT__pc0, last_joy_enable, last_joy_latch,
                    (int)top->rootp->top__DOT__hpos, (int)top->rootp->top__DOT__vpos,
-                   (int)CORE(joy_timer_active), (int)CORE(joy_timer));
+                   (int)CORE(joy_out), (int)CORE(joy_timer));
         }
 
         if (joy_trace_from >= 0 && fg.frame >= joy_trace_from &&

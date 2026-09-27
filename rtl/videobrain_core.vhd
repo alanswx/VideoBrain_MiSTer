@@ -24,6 +24,7 @@ ENTITY videobrain_core IS
     -- Keyboard matrix, 9 columns x 4 rows, flattened by column, active high.
     kbd_matrix : IN std_logic_vector(35 DOWNTO 0);
     joy_fire   : IN std_logic_vector(3 DOWNTO 0);
+    -- Stick positions, byte n selected by port-0 bit n, 128 = centre.
     joy_pots   : IN std_logic_vector(63 DOWNTO 0);
 
     audio_code : OUT std_logic_vector(1 DOWNTO 0);
@@ -122,10 +123,9 @@ ARCHITECTURE rtl OF videobrain_core IS
   SIGNAL key_latch_l : uv8;
   SIGNAL joy_enable_l : std_logic;
   SIGNAL joy_timer : unsigned(13 DOWNTO 0) := (OTHERS => '0');
-  SIGNAL joy_timer_active : std_logic := '0';
-  SIGNAL joy_started : std_logic := '0';
-  SIGNAL joy_capture_stb : std_logic := '0';
-  SIGNAL joy_capture_x : uv8 := (OTHERS => '0');
+  SIGNAL joy_out, joy_int : std_logic := '0';
+  SIGNAL joy_armed : std_logic := '1';
+  SIGNAL joy_line : std_logic := '1';
   SIGNAL uv_o_kbd_l : std_logic;
   SIGNAL x_zoom_l, y_zoom_l : std_logic;
   SIGNAL fifo_pop_l   : std_logic;
@@ -147,6 +147,7 @@ ARCHITECTURE rtl OF videobrain_core IS
   SIGNAL int_vector : uv16;
   SIGNAL int_ack    : std_logic;
   SIGNAL ext_int    : std_logic;
+  SIGNAL yint_pulse : std_logic;
 
   SIGNAL uv_o_int_l  : std_logic;
   SIGNAL uv_o_frz_l  : std_logic;
@@ -238,7 +239,7 @@ BEGIN
       yint_ho        => uv_yint_ho_l,
       cmd_int        => uv_o_int_l,
       cmd_frz        => uv_o_frz_l,
-      irq_pulse      => ext_int
+      irq_pulse      => yint_pulse
       );
 
   u_uv202 : ENTITY work.uv202_top
@@ -290,8 +291,8 @@ BEGIN
       bb_rdata       => bb_rdata,
       uv_cur_field   => field_l,
       uv_cur_vpos    => vpos_l,
-      uv_capture_stb => joy_capture_stb,
-      uv_capture_x   => joy_capture_x,
+      uv_capture_stb => ext_int,
+      uv_capture_x   => hpos_l,
       uv_o_x_zm      => x_zoom_l,
       uv_o_frz       => uv_o_frz_l,
       uv_o_enb       => uv_o_enb,
@@ -334,49 +335,57 @@ BEGIN
   f8_po_b_n <= po_b_n_l;
   joy_enable <= joy_enable_l;
 
+  -- EXT INT is wired-OR: the UV201 Y interrupt and the joystick 555.
+  ext_int <= yint_pulse OR joy_int;
+
+  -- Joystick pot timer (U18 LM555, netlist from seanriddle.com).
+  -- TRIGGER and RESET are tied and held low while !EJOY AND HBLANK, so the
+  -- timing starts at HBLANK fall, or at EJOY if it is set during HBLANK.
+  -- Selected pots charge 3.3nF through 39K each. While EJOY is set, EXT INT
+  -- follows the 555 output and its falling edge freezes X/Y.
+  --
+  -- Software reads dY*228 + XFRZ - 38 and keeps a per-pot min/max at $0C00,
+  -- widening it as readings arrive. Tennis seeds it with 640..1792, which
+  -- is 1.1 * (39K + 10K..100K) * 3.3nF; stick position 0..255 spans that.
+  -- TODO: real stick travel is unmeasured.
   PROCESS (clk, reset_na) IS
-    VARIABLE joy_data_v : unsigned(7 DOWNTO 0);
-    VARIABLE joy_value_v : natural RANGE 0 TO 255;
-    VARIABLE delay_v     : natural RANGE 0 TO 16383;
+    VARIABLE pot_v  : unsigned(7 DOWNTO 0);
+    VARIABLE out_v  : std_logic;
+    VARIABLE line_v : std_logic;
   BEGIN
     IF reset_na = '0' THEN
-      joy_timer        <= (OTHERS => '0');
-      joy_timer_active <= '0';
-      joy_started      <= '0';
-      joy_capture_stb  <= '0';
-      joy_capture_x    <= (OTHERS => '0');
+      joy_timer <= (OTHERS => '0');
+      joy_armed <= '1';
+      joy_out   <= '0';
+      joy_line  <= '1';
+      joy_int   <= '0';
 
     ELSIF rising_edge(clk) THEN
-      joy_capture_stb <= '0';
+      out_v := joy_out;
 
-      -- The BIOS holds enable high for one measurement, then reads the capture.
-      IF joy_enable_l = '0' THEN
-        joy_timer_active <= '0';
-        joy_started <= '0';
-      ELSIF hblank_rising = '1' AND joy_started = '0' THEN
-        joy_data_v := (OTHERS => '0');
+      IF joy_enable_l = '0' AND hblank_l = '1' THEN
+        joy_armed <= '1';
+        out_v := '0';
+      ELSIF joy_armed = '1' THEN
+        pot_v := (OTHERS => '0');
         FOR i IN 0 TO 7 LOOP
           IF key_latch_l(i) = '1' THEN
-            joy_data_v := joy_data_v OR unsigned(joy_pots(i * 8 + 7 DOWNTO i * 8));
+            pot_v := pot_v OR unsigned(joy_pots(i * 8 + 7 DOWNTO i * 8));
           END IF;
         END LOOP;
-
-        -- 555: 1.1 * (3.9K + pot) * 0.003uF at 14.318181MHz.
-        joy_value_v := to_integer(joy_data_v);
-        delay_v := 184 + joy_value_v * 47 + joy_value_v / 4;
-        joy_timer <= to_unsigned(delay_v, joy_timer'length);
-        joy_timer_active <= '1';
-        joy_started <= '1';
-
-      ELSIF joy_timer_active = '1' THEN
-        IF joy_timer = 0 THEN
-          joy_capture_x <= hpos_l;
-          joy_capture_stb <= '1';
-          joy_timer_active <= '0';
-        ELSE
-          joy_timer <= joy_timer - 1;
-        END IF;
+        joy_timer <= to_unsigned(2580, 14) + pot_v * to_unsigned(18, 5);
+        joy_armed <= '0';
+        out_v := '1';
+      ELSIF joy_timer = 0 THEN
+        out_v := '0';
+      ELSE
+        joy_timer <= joy_timer - 1;
       END IF;
+
+      line_v := NOT joy_enable_l OR out_v;
+      joy_int  <= joy_line AND NOT line_v;
+      joy_out  <= out_v;
+      joy_line <= line_v;
     END IF;
   END PROCESS;
 
